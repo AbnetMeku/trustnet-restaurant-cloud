@@ -1,0 +1,197 @@
+from datetime import datetime, timezone
+
+from .extensions import db
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+user_store_assoc = db.Table(
+    "user_store_assoc",
+    db.Column("user_id", db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("store_id", db.Integer, db.ForeignKey("stores.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class Tenant(db.Model):
+    __tablename__ = "tenants"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False, unique=True)
+    code = db.Column(db.String(64), nullable=False, unique=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class Store(db.Model):
+    __tablename__ = "stores"
+    __table_args__ = (db.UniqueConstraint("tenant_id", "code", name="uq_store_code_per_tenant"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    code = db.Column(db.String(64), nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class User(db.Model):
+    __tablename__ = "users"
+    __table_args__ = (db.UniqueConstraint("tenant_id", "username", name="uq_username_per_tenant"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    username = db.Column(db.String(80), nullable=False)
+    password_hash = db.Column(db.Text, nullable=False)
+    role = db.Column(db.String(32), nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+    stores = db.relationship("Store", secondary=user_store_assoc, backref="users")
+
+
+class License(db.Model):
+    __tablename__ = "licenses"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    store_id = db.Column(db.Integer, db.ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
+    license_key = db.Column(db.String(128), nullable=False, unique=True)
+    status = db.Column(db.String(32), nullable=False, default="inactive")
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class Device(db.Model):
+    __tablename__ = "devices"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    store_id = db.Column(db.Integer, db.ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_id = db.Column(db.String(128), nullable=False, unique=True)
+    machine_fingerprint = db.Column(db.String(255), nullable=False)
+    device_name = db.Column(db.String(120), nullable=True)
+    status = db.Column(db.String(32), nullable=False, default="pending")
+    activated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    last_seen_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class Category(db.Model):
+    __tablename__ = "categories"
+    __table_args__ = (db.UniqueConstraint("tenant_id", "name", name="uq_category_name_per_tenant"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = db.Column(db.String(100), nullable=False)
+    quantity_step = db.Column(db.Numeric(3, 2), nullable=False, default=1.0)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class SubCategory(db.Model):
+    __tablename__ = "subcategories"
+    __table_args__ = (
+        db.UniqueConstraint("tenant_id", "category_id", "name", name="uq_subcategory_name_per_category_per_tenant"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    category_id = db.Column(db.Integer, db.ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True)
+    name = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class Station(db.Model):
+    __tablename__ = "stations"
+    __table_args__ = (db.UniqueConstraint("tenant_id", "name", name="uq_station_name_per_tenant"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = db.Column(db.String(50), nullable=False)
+    printer_identifier = db.Column(db.String(120), nullable=True)
+    print_mode = db.Column(db.String(20), nullable=False, default="grouped")
+    cashier_printer = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class MenuItem(db.Model):
+    __tablename__ = "menu_items"
+    __table_args__ = (db.UniqueConstraint("tenant_id", "name", name="uq_menu_item_name_per_tenant"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    price = db.Column(db.Numeric(10, 2), nullable=True)
+    vip_price = db.Column(db.Numeric(10, 2), nullable=True)
+    quantity_step = db.Column(db.Numeric(3, 2), nullable=True)
+    is_available = db.Column(db.Boolean, nullable=False, default=True)
+    image_url = db.Column(db.Text, nullable=True)
+    station_id = db.Column(db.Integer, db.ForeignKey("stations.id", ondelete="SET NULL"), nullable=True, index=True)
+    subcategory_id = db.Column(db.Integer, db.ForeignKey("subcategories.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class Table(db.Model):
+    __tablename__ = "tables"
+    __table_args__ = (db.UniqueConstraint("tenant_id", "number", name="uq_table_number_per_tenant"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    number = db.Column(db.String(10), nullable=False)
+    status = db.Column(db.String(30), nullable=False, default="available")
+    is_vip = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class BrandingSettings(db.Model):
+    __tablename__ = "branding_settings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    logo_url = db.Column(db.Text, nullable=True)
+    background_url = db.Column(db.Text, nullable=True)
+    business_day_start_time = db.Column(db.String(5), nullable=False, default="06:00")
+    print_preview_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    kds_mark_unavailable_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    kitchen_tag_category_id = db.Column(db.Integer, db.ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
+    kitchen_tag_subcategory_id = db.Column(db.Integer, db.ForeignKey("subcategories.id", ondelete="SET NULL"), nullable=True)
+    kitchen_tag_subcategory_ids = db.Column(db.JSON, nullable=True)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class OrderSummary(db.Model):
+    __tablename__ = "order_summaries"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    store_id = db.Column(db.Integer, db.ForeignKey("stores.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_order_id = db.Column(db.String(64), nullable=False)
+    source_user_name = db.Column(db.String(80), nullable=True)
+    table_number = db.Column(db.String(20), nullable=True)
+    status = db.Column(db.String(32), nullable=False, default="pending")
+    total_amount = db.Column(db.Numeric(15, 2), nullable=False, default=0)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class SyncEvent(db.Model):
+    __tablename__ = "sync_events"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    store_id = db.Column(db.Integer, db.ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
+    device_id = db.Column(db.String(128), nullable=False, index=True)
+    event_id = db.Column(db.String(128), nullable=False, unique=True)
+    entity_type = db.Column(db.String(64), nullable=False)
+    entity_id = db.Column(db.String(64), nullable=False)
+    operation = db.Column(db.String(32), nullable=False)
+    payload = db.Column(db.JSON, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
