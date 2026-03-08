@@ -1,12 +1,37 @@
 from datetime import datetime, timezone
 
 from flask import Blueprint, jsonify, request
+from sqlalchemy.exc import IntegrityError
 
 from ..auth import roles_required
 from ..extensions import db
 from ..models import Device, License
 
 licenses_bp = Blueprint("licenses", __name__)
+
+
+@licenses_bp.get("/licenses")
+@roles_required("super_admin")
+def list_licenses():
+    tenant_id = request.args.get("tenant_id", type=int)
+    query = License.query
+    if tenant_id:
+        query = query.filter_by(tenant_id=tenant_id)
+    rows = query.order_by(License.created_at.desc()).all()
+    return jsonify(
+        [
+            {
+                "id": row.id,
+                "tenant_id": row.tenant_id,
+                "store_id": row.store_id,
+                "license_key": row.license_key,
+                "status": row.status,
+                "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ]
+    )
 
 
 @licenses_bp.post("/licenses/validate")
@@ -83,7 +108,20 @@ def create_license():
         status=status,
         expires_at=expires_at,
     )
-    db.session.add(license_row)
-    db.session.commit()
+    try:
+        db.session.add(license_row)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": "license key already exists"}), 409
 
-    return jsonify({"id": license_row.id, "status": license_row.status}), 201
+    return jsonify(
+        {
+            "id": license_row.id,
+            "tenant_id": license_row.tenant_id,
+            "store_id": license_row.store_id,
+            "license_key": license_row.license_key,
+            "status": license_row.status,
+            "expires_at": license_row.expires_at.isoformat() if license_row.expires_at else None,
+        }
+    ), 201

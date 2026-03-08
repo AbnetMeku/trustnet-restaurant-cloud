@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import create_access_token, get_jwt, get_jwt_identity, jwt_required
+from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..auth import roles_required
@@ -122,6 +123,10 @@ def create_tenant_user():
     if store_ids:
         user.stores = Store.query.filter(Store.id.in_(store_ids), Store.tenant_id == tenant_id).all()
 
-    db.session.add(user)
-    db.session.commit()
-    return jsonify({"id": user.id, "username": user.username, "role": user.role}), 201
+    try:
+        db.session.add(user)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": "username already exists for this tenant"}), 409
+    return jsonify({"id": user.id, "username": user.username, "role": user.role, "tenant_id": user.tenant_id}), 201

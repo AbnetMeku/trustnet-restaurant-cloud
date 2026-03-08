@@ -4,6 +4,7 @@ from .config import Config
 from .extensions import db, jwt, migrate
 from .routes.admin import admin_bp
 from .routes.auth import auth_bp
+from .routes.compat import compat_bp
 from .routes.devices import devices_bp
 from .routes.health import health_bp
 from .routes.licenses import licenses_bp
@@ -23,6 +24,7 @@ def create_app() -> Flask:
     app.register_blueprint(tenants_bp, url_prefix="/api")
     app.register_blueprint(auth_bp, url_prefix="/api")
     app.register_blueprint(admin_bp, url_prefix="/api")
+    app.register_blueprint(compat_bp, url_prefix="/api")
     app.register_blueprint(devices_bp, url_prefix="/api")
     app.register_blueprint(licenses_bp, url_prefix="/api")
     app.register_blueprint(sync_bp, url_prefix="/api")

@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, request
+from sqlalchemy.exc import IntegrityError
 
 from ..auth import roles_required
 from ..extensions import db
@@ -20,13 +21,17 @@ def create_tenant():
         return jsonify({"error": "name, code, store_name, and store_code are required"}), 400
 
     tenant = Tenant(name=name, code=code)
-    db.session.add(tenant)
-    db.session.flush()
+    try:
+        db.session.add(tenant)
+        db.session.flush()
 
-    store = Store(tenant_id=tenant.id, name=store_name, code=store_code)
-    db.session.add(store)
-    db.session.add(BrandingSettings(tenant_id=tenant.id))
-    db.session.commit()
+        store = Store(tenant_id=tenant.id, name=store_name, code=store_code)
+        db.session.add(store)
+        db.session.add(BrandingSettings(tenant_id=tenant.id))
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": "tenant or store code already exists"}), 409
 
     return (
         jsonify(

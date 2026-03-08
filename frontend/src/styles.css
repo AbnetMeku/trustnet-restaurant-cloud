@@ -22,7 +22,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -163,6 +164,12 @@ input {
   padding: 12px 14px;
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
+}
+
+select {
+  width: 100%;
+  border-radius: 12px;
+  padding: 12px 14px;
 }
 
 input::placeholder {
@@ -357,11 +364,28 @@ input::placeholder {
 }
 
 .inline-form input,
+.inline-form select,
 .stack-form input,
+.stack-form select,
 .section input {
   border: 1px solid #cbd5e1;
   background: #fff;
   color: #0f172a;
+}
+
+.section select {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+}
+
+.success {
+  color: #166534;
+}
+
+.success-banner {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.18);
 }
 
 .stack-form {

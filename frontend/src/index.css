@@ -1,0 +1,226 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Literata:wght@400;600&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes fade-in {
+  0% { opacity: 0; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}
+
+
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222 25% 8%;
+    --foreground: 210 20% 96%;
+    --card: 222 22% 11%;
+    --card-foreground: 210 20% 96%;
+    --popover: 222 22% 11%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 210 20% 96%;
+    --primary-foreground: 222 22% 11%;
+    --secondary: 222 16% 16%;
+    --secondary-foreground: 210 20% 94%;
+    --muted: 222 16% 16%;
+    --muted-foreground: 215 14% 70%;
+    --accent: 222 16% 16%;
+    --accent-foreground: 210 20% 94%;
+    --destructive: 0 63% 43%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 222 15% 22%;
+    --input: 222 15% 22%;
+    --ring: 215 20% 82%;
+    --chart-1: 217 72% 56%;
+    --chart-2: 160 58% 44%;
+    --chart-3: 33 78% 57%;
+    --chart-4: 268 62% 60%;
+    --chart-5: 342 72% 56%;
+  }
+}
+
+
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Space Grotesk", "Segoe UI", sans-serif;
+  }
+}
+
+@layer components {
+  .admin-shell {
+    @apply bg-slate-100 text-slate-900 dark:bg-[#070f22] dark:text-slate-100;
+    background-image: none;
+  }
+
+  .admin-shell-grid {
+    background-image: none;
+  }
+
+  .dark .admin-shell {
+    background-image: none;
+  }
+
+  .dark .admin-shell-grid {
+    background-image: none;
+  }
+
+  .admin-sidebar {
+    @apply bg-white/70 dark:bg-slate-900/70 shadow-2xl backdrop-blur-xl;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .admin-sidebar-header {
+    @apply border-b border-slate-200/70 dark:border-slate-800/80;
+  }
+
+  .admin-logo-wrap {
+    @apply rounded-xl bg-slate-100/90 dark:bg-slate-800/80 p-1.5 border border-slate-200/80 dark:border-slate-700/70;
+  }
+
+  .admin-icon-btn {
+    @apply rounded-lg p-2 hover:bg-slate-100/80 dark:hover:bg-slate-800/80;
+  }
+
+  .admin-section-title {
+    @apply px-3 text-[11px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 mb-2;
+  }
+
+  .admin-nav-item {
+    @apply w-full text-left flex items-center gap-3 rounded-xl px-3.5 py-2.5 mb-1.5 relative text-slate-700 dark:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/70;
+  }
+
+  .admin-nav-item.is-active {
+    @apply bg-slate-900 text-white shadow-lg shadow-slate-900/15 dark:bg-slate-100 dark:text-slate-900;
+  }
+
+  .admin-nav-icon {
+    @apply text-lg shrink-0 opacity-80;
+  }
+
+  .admin-nav-item.is-active .admin-nav-icon {
+    @apply opacity-100;
+  }
+
+  .admin-header {
+    @apply border-b border-slate-200/60 dark:border-slate-800/60 bg-white/65 dark:bg-slate-900/60 backdrop-blur-xl;
+  }
+
+  .admin-header-inner {
+    @apply flex flex-wrap items-center justify-between gap-3;
+  }
+
+  .admin-badge {
+    @apply inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900;
+  }
+
+  .admin-page-title {
+    @apply text-lg md:text-xl font-semibold text-slate-900 dark:text-slate-100;
+  }
+
+  .admin-page-subtitle {
+    @apply text-xs md:text-sm text-slate-500 dark:text-slate-400;
+  }
+
+  .admin-user-pill {
+    @apply hidden md:flex items-center rounded-full border border-slate-200/80 dark:border-slate-700/70 px-4 py-1.5 text-sm text-slate-700 dark:text-slate-200 bg-white/70 dark:bg-slate-900/60;
+  }
+
+  .admin-sidebar-footer {
+    @apply px-4 pb-4 pt-2 flex flex-col gap-2 border-t border-slate-200/60 dark:border-slate-800/60;
+  }
+
+  .admin-main {
+    @apply flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    scroll-behavior: smooth;
+  }
+
+  .admin-card {
+    @apply border border-slate-200/40 bg-white/70 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.55)] backdrop-blur-2xl dark:border-slate-800/50 dark:bg-slate-900/55;
+    transition: transform 280ms ease, box-shadow 280ms ease, border-color 280ms ease;
+  }
+
+  .admin-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 22px 50px -36px rgba(15, 23, 42, 0.6);
+  }
+
+  .admin-card-soft {
+    @apply border border-slate-200/25 bg-white/55 dark:border-slate-800/40 dark:bg-slate-900/45;
+  }
+
+  .admin-hero {
+    @apply bg-gradient-to-r from-[#0a1b3e] via-[#0f2b66] to-[#0a1b3e] text-white;
+  }
+
+  .admin-toolbar {
+    @apply border-t border-slate-200/70 bg-slate-50/80 dark:border-slate-800/80 dark:bg-slate-900/60;
+  }
+
+  .admin-stat {
+    @apply rounded-lg border border-white/20 bg-blue-400/10 px-3 py-2;
+  }
+
+  .inventory-panel {
+    @apply admin-card;
+  }
+
+  .inventory-panel-soft {
+    @apply border border-slate-200/40 bg-white/40 dark:border-slate-800/50 dark:bg-slate-900/35;
+  }
+
+  .inventory-table-shell {
+    @apply overflow-x-auto rounded-xl border border-slate-200/40 bg-white/40 dark:border-slate-800/50 dark:bg-slate-900/35;
+  }
+
+  .inventory-table-head {
+    @apply bg-slate-100/80 text-left text-slate-600 dark:bg-slate-950/70 dark:text-slate-300;
+  }
+
+  .inventory-table-row {
+    @apply border-b border-border/60 last:border-b-0 hover:bg-slate-100/60 dark:hover:bg-slate-900/45 transition-colors;
+  }
+}

@@ -13,6 +13,18 @@ user_store_assoc = db.Table(
     db.Column("store_id", db.Integer, db.ForeignKey("stores.id", ondelete="CASCADE"), primary_key=True),
 )
 
+waiter_profile_station_assoc = db.Table(
+    "waiter_profile_station_assoc",
+    db.Column("waiter_profile_id", db.Integer, db.ForeignKey("waiter_profiles.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("station_id", db.Integer, db.ForeignKey("stations.id", ondelete="CASCADE"), primary_key=True),
+)
+
+table_waiter_assoc = db.Table(
+    "table_waiter_assoc",
+    db.Column("table_id", db.Integer, db.ForeignKey("tables.id", ondelete="CASCADE"), primary_key=True),
+    db.Column("user_id", db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+)
+
 
 class Tenant(db.Model):
     __tablename__ = "tenants"
@@ -45,6 +57,7 @@ class User(db.Model):
     username = db.Column(db.String(80), nullable=False)
     password_hash = db.Column(db.Text, nullable=False)
     role = db.Column(db.String(32), nullable=False)
+    waiter_profile_id = db.Column(db.Integer, db.ForeignKey("waiter_profiles.id", ondelete="SET NULL"), nullable=True, index=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
@@ -119,6 +132,22 @@ class Station(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
 
+class WaiterProfile(db.Model):
+    __tablename__ = "waiter_profiles"
+    __table_args__ = (db.UniqueConstraint("tenant_id", "name", name="uq_waiter_profile_name_per_tenant"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    max_tables = db.Column(db.Integer, nullable=False, default=5)
+    allow_vip = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+    stations = db.relationship("Station", secondary=waiter_profile_station_assoc, backref="waiter_profiles")
+    users = db.relationship("User", backref="waiter_profile", lazy=True)
+
+
 class MenuItem(db.Model):
     __tablename__ = "menu_items"
     __table_args__ = (db.UniqueConstraint("tenant_id", "name", name="uq_menu_item_name_per_tenant"),)
@@ -149,6 +178,8 @@ class Table(db.Model):
     is_vip = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+    waiters = db.relationship("User", secondary=table_waiter_assoc, backref="tables")
 
 
 class BrandingSettings(db.Model):

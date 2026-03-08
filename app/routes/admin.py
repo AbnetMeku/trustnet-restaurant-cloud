@@ -36,8 +36,32 @@ def list_tenants():
                 "code": tenant.code,
                 "is_active": tenant.is_active,
                 "created_at": tenant.created_at.isoformat(),
+                "stores": [
+                    {"id": store.id, "name": store.name, "code": store.code, "is_active": store.is_active}
+                    for store in Store.query.filter_by(tenant_id=tenant.id).order_by(Store.created_at.asc()).all()
+                ],
             }
             for tenant in tenants
+        ]
+    )
+
+
+@admin_bp.get("/tenants/<int:tenant_id>/stores")
+@roles_required("super_admin", "tenant_admin", "manager", "cashier")
+@tenant_access_required
+def list_stores(tenant_id: int):
+    rows = Store.query.filter_by(tenant_id=tenant_id).order_by(Store.created_at.asc()).all()
+    return jsonify(
+        [
+            {
+                "id": row.id,
+                "tenant_id": row.tenant_id,
+                "name": row.name,
+                "code": row.code,
+                "is_active": row.is_active,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
         ]
     )
 
