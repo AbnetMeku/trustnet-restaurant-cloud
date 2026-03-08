@@ -70,10 +70,11 @@ function LoginPage({ onLogin }) {
   }
 
   return (
-    <div className="shell">
+    <div className="shell login-shell">
       <div className="auth-panel">
         <div className="hero">
           <p className="eyebrow">TrustNet Cloud</p>
+          <img className="brand-logo" src="/logo.png" alt="TrustNet logo" />
           <h1>Restaurant admin, mirrored to the cloud.</h1>
           <p className="lede">
             Tenant admins use the cloud copy of the local admin surface. Super admins provision tenants, stores,
@@ -639,6 +640,7 @@ function TenantAdminPage({ user, onLogout }) {
       <aside className="card sidebar">
         <div>
           <p className="eyebrow">Tenant Admin</p>
+          <img className="sidebar-logo" src="/logo.png" alt="TrustNet logo" />
           <h2 className="sidebar-title">{dashboard?.tenant?.name || "Cloud Admin"}</h2>
         </div>
         <nav className="sidebar-nav">
