@@ -1,19 +1,23 @@
 services:
   frontend:
-    image: ghcr.io/abnetmeku/trustnet-restaurant-cloud-frontend:latest
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
     depends_on:
       - cloud-backend
     ports:
       - "8081:80"
 
   cloud-backend:
-    image: ghcr.io/abnetmeku/trustnet-restaurant-cloud-cloud-backend:latest
+    build: .
     depends_on:
       - postgres
     ports:
       - "7000:7000"
     env_file:
       - .env
+    volumes:
+      - ./:/app
     command: ["sh", "docker/start.sh"]
 
   postgres:
