@@ -43,10 +43,10 @@ jobs:
           owner="${GITHUB_REPOSITORY_OWNER,,}"
           repo_name="${GITHUB_REPOSITORY##*/}"
           repo_name="${repo_name,,}"
-          image_name="${owner}/${repo_name}-${{ matrix.image }}"
-          tags="${{ env.REGISTRY }}/${image_name}:${GITHUB_SHA}"
+          image_name="${{ env.REGISTRY }}/${owner}/${repo_name}-${{ matrix.image }}"
+          tags="${image_name}:${GITHUB_SHA}"
           if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
-            tags="${tags},${{ env.REGISTRY }}/${image_name}:latest"
+            tags="${tags},${image_name}:latest"
           fi
           echo "tags=${tags}" >> "$GITHUB_OUTPUT"
 
