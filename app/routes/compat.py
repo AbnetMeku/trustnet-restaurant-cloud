@@ -2,7 +2,7 @@ from collections import defaultdict
 from decimal import Decimal
 from uuid import uuid4
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt, jwt_required
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash
@@ -12,9 +12,17 @@ from ..extensions import db
 from ..models import (
     BrandingSettings,
     Category,
+    InventoryItem,
+    InventoryMenuLink,
     MenuItem,
     OrderSummary,
     Station,
+    StationStock,
+    StationStockSnapshot,
+    StockPurchase,
+    StockTransfer,
+    StoreStock,
+    StoreStockSnapshot,
     SubCategory,
     Table,
     User,
@@ -22,6 +30,10 @@ from ..models import (
 )
 
 compat_bp = Blueprint("compat", __name__)
+
+
+def _custom_branding_locked_for_request() -> bool:
+    return current_app.config.get("DISABLE_TENANT_CUSTOM_BRANDING", False) and "super_admin" not in extract_roles_from_claims(get_jwt())
 
 
 def _decimal(value, default="0"):
@@ -115,6 +127,7 @@ def get_branding():
     if error:
         return error
     row = _branding_for(tenant_id)
+    locked = _custom_branding_locked_for_request()
     return jsonify(
         {
             "logo_url": row.logo_url or "/logo.png",
@@ -127,6 +140,7 @@ def get_branding():
             "kitchen_tag_category_id": row.kitchen_tag_category_id,
             "kitchen_tag_subcategory_id": row.kitchen_tag_subcategory_id,
             "kitchen_tag_subcategory_ids": row.kitchen_tag_subcategory_ids or [],
+            "custom_branding_locked": locked,
         }
     )
 
@@ -139,8 +153,13 @@ def update_branding():
         return error
     row = _branding_for(tenant_id)
     payload = request.get_json(silent=True) or {}
-    row.logo_url = payload.get("logo_url") or row.logo_url or "/logo.png"
-    row.background_url = payload.get("background_url") or row.background_url or "/Background.png"
+    locked = _custom_branding_locked_for_request()
+    if locked and any(field in payload for field in ("logo_url", "background_url")):
+        return jsonify({"msg": "Custom branding is centrally managed in the cloud."}), 403
+
+    if not locked:
+        row.logo_url = payload.get("logo_url") or row.logo_url or "/logo.png"
+        row.background_url = payload.get("background_url") or row.background_url or "/Background.png"
     row.business_day_start_time = (payload.get("business_day_start_time") or row.business_day_start_time or "06:00").strip()
     row.print_preview_enabled = bool(payload.get("print_preview_enabled", row.print_preview_enabled))
     row.kds_mark_unavailable_enabled = bool(payload.get("kds_mark_unavailable_enabled", row.kds_mark_unavailable_enabled))
@@ -156,6 +175,8 @@ def update_branding():
 def upload_branding(asset_type: str):
     if asset_type not in {"logo", "background"}:
         return jsonify({"msg": "unsupported asset type"}), 400
+    if _custom_branding_locked_for_request():
+        return jsonify({"msg": "Custom branding is centrally managed in the cloud."}), 403
     return jsonify({"msg": "asset uploads are not enabled in the cloud yet"}), 501
 
 
@@ -954,190 +975,838 @@ def delete_print_job(job_id: int):
     return jsonify({"id": job_id, "deleted": True})
 
 
+def _inventory_decimal(value) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _inventory_positive_float(value, field_name: str) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be a number")
+    if parsed <= 0:
+        raise ValueError(f"{field_name} must be greater than zero")
+    return parsed
+
+
 @compat_bp.get("/inventory/items/")
 @jwt_required()
 def inventory_items_list():
-    return jsonify([])
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    rows = InventoryItem.query.filter_by(tenant_id=tenant_id).order_by(InventoryItem.name.asc()).all()
+    return jsonify(
+        [
+            {
+                "id": row.id,
+                "name": row.name,
+                "unit": row.unit,
+                "container_size_ml": row.container_size_ml,
+                "default_shot_ml": row.default_shot_ml,
+                "is_active": row.is_active,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ]
+    )
 
 
 @compat_bp.post("/inventory/items/")
 @jwt_required()
 def inventory_items_create():
-    return jsonify({"msg": "inventory sync not enabled yet"}), 501
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    unit = (payload.get("unit") or "Bottle").strip() or "Bottle"
+    if not name:
+        return jsonify({"msg": "Name is required"}), 400
+    try:
+        container_size_ml = _inventory_positive_float(payload.get("container_size_ml"), "container_size_ml")
+        default_shot_ml = _inventory_positive_float(payload.get("default_shot_ml"), "default_shot_ml")
+    except ValueError as exc:
+        return jsonify({"msg": str(exc)}), 400
+    if default_shot_ml > container_size_ml:
+        return jsonify({"msg": "default_shot_ml cannot be greater than container_size_ml"}), 400
+    existing = InventoryItem.query.filter_by(tenant_id=tenant_id, name=name).first()
+    if existing:
+        return jsonify({"msg": "Inventory item already exists"}), 400
+    row = InventoryItem(
+        tenant_id=tenant_id,
+        name=name,
+        unit=unit,
+        serving_unit="ml",
+        servings_per_unit=container_size_ml / default_shot_ml,
+        container_size_ml=container_size_ml,
+        default_shot_ml=default_shot_ml,
+        is_active=bool(payload.get("is_active", True)),
+    )
+    db.session.add(row)
+    db.session.commit()
+    return jsonify({"msg": "Inventory item created successfully", "id": row.id}), 201
 
 
 @compat_bp.get("/inventory/items/<int:item_id>")
 @jwt_required()
 def inventory_item_get(item_id: int):
-    return jsonify({"id": item_id})
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    row = InventoryItem.query.filter_by(id=item_id, tenant_id=tenant_id).first()
+    if row is None:
+        return jsonify({"msg": "Inventory item not found"}), 404
+    links = (
+        InventoryMenuLink.query.filter_by(tenant_id=tenant_id, inventory_item_id=row.id)
+        .order_by(InventoryMenuLink.id.asc())
+        .all()
+    )
+    default_ratio = (
+        (float(row.default_shot_ml or 0) / float(row.container_size_ml or 1)) if row.container_size_ml else 1.0
+    )
+    return jsonify(
+        {
+            "id": row.id,
+            "name": row.name,
+            "unit": row.unit,
+            "container_size_ml": row.container_size_ml,
+            "default_shot_ml": row.default_shot_ml,
+            "is_active": row.is_active,
+            "default_shot_deduction_ratio": default_ratio,
+            "menu_links": [
+                {
+                    "id": link.id,
+                    "menu_item_id": link.menu_item_id,
+                    "menu_item_name": link.menu_item.name if link.menu_item else None,
+                    "serving_type": link.serving_type or "custom_ml",
+                    "serving_value": link.serving_value,
+                    "deduction_ratio": link.deduction_ratio,
+                }
+                for link in links
+            ],
+        }
+    )
 
 
 @compat_bp.put("/inventory/items/<int:item_id>")
 @jwt_required()
 def inventory_item_update(item_id: int):
-    return jsonify({"id": item_id, "msg": "inventory sync not enabled yet"}), 501
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    row = InventoryItem.query.filter_by(id=item_id, tenant_id=tenant_id).first()
+    if row is None:
+        return jsonify({"msg": "Inventory item not found"}), 404
+    payload = request.get_json(silent=True) or {}
+    if "name" in payload:
+        name = (payload.get("name") or "").strip()
+        if not name:
+            return jsonify({"msg": "Name is required"}), 400
+        existing = (
+            InventoryItem.query.filter(
+                InventoryItem.tenant_id == tenant_id,
+                InventoryItem.name == name,
+                InventoryItem.id != row.id,
+            )
+            .first()
+        )
+        if existing:
+            return jsonify({"msg": "Inventory item already exists"}), 400
+        row.name = name
+    if "unit" in payload:
+        unit = (payload.get("unit") or "").strip()
+        if not unit:
+            return jsonify({"msg": "unit is required"}), 400
+        row.unit = unit
+    try:
+        container_size_ml = (
+            _inventory_positive_float(payload["container_size_ml"], "container_size_ml")
+            if "container_size_ml" in payload
+            else float(row.container_size_ml)
+        )
+        default_shot_ml = (
+            _inventory_positive_float(payload["default_shot_ml"], "default_shot_ml")
+            if "default_shot_ml" in payload
+            else float(row.default_shot_ml)
+        )
+    except ValueError as exc:
+        return jsonify({"msg": str(exc)}), 400
+    if default_shot_ml > container_size_ml:
+        return jsonify({"msg": "default_shot_ml cannot be greater than container_size_ml"}), 400
+    row.container_size_ml = container_size_ml
+    row.default_shot_ml = default_shot_ml
+    row.serving_unit = "ml"
+    row.servings_per_unit = container_size_ml / default_shot_ml
+    if "is_active" in payload:
+        row.is_active = bool(payload.get("is_active"))
+    db.session.commit()
+    return jsonify({"msg": "Inventory item updated successfully"}), 200
 
 
 @compat_bp.delete("/inventory/items/<int:item_id>")
 @jwt_required()
 def inventory_item_delete(item_id: int):
-    return jsonify({"id": item_id, "msg": "inventory sync not enabled yet"}), 501
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    row = InventoryItem.query.filter_by(id=item_id, tenant_id=tenant_id).first()
+    if row is None:
+        return jsonify({"msg": "Inventory item not found"}), 404
+    db.session.delete(row)
+    db.session.commit()
+    return jsonify({"msg": "Inventory item deleted"}), 200
 
 
 @compat_bp.post("/inventory/items/<int:item_id>/links")
 @jwt_required()
 def inventory_links_create(item_id: int):
-    return jsonify({"inventory_item_id": item_id, "created": 0, "skipped": []})
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    inventory_item = InventoryItem.query.filter_by(id=item_id, tenant_id=tenant_id).first()
+    if inventory_item is None:
+        return jsonify({"msg": "Inventory item not found"}), 404
+    payload = request.get_json(silent=True) or {}
+    groups = payload.get("links") or []
+    created = []
+    skipped = []
+    for group in groups:
+        menu_item_ids = group.get("menu_item_ids") or []
+        serving_type = str(group.get("serving_type") or "custom_ml").strip().lower()
+        serving_value_raw = group.get("serving_value")
+        if serving_type not in {"shot", "bottle", "custom_ml"}:
+            return jsonify({"msg": "serving_type must be one of: shot, bottle, custom_ml"}), 400
+        if serving_value_raw in (None, ""):
+            serving_value = 1.0
+        else:
+            try:
+                serving_value = _inventory_positive_float(serving_value_raw, "serving_value")
+            except ValueError as exc:
+                return jsonify({"msg": str(exc)}), 400
+        if serving_type == "custom_ml":
+            deduction_ratio = serving_value / float(inventory_item.container_size_ml or 1.0)
+        elif serving_type == "shot":
+            deduction_ratio = (float(inventory_item.default_shot_ml or 1.0) * serving_value) / float(
+                inventory_item.container_size_ml or 1.0
+            )
+        else:
+            deduction_ratio = serving_value
+        for menu_item_id in menu_item_ids:
+            menu_row = MenuItem.query.filter_by(id=menu_item_id, tenant_id=tenant_id).first()
+            if menu_row is None:
+                skipped.append({"menu_item_id": menu_item_id, "reason": "Menu item not found"})
+                continue
+            existing = InventoryMenuLink.query.filter_by(
+                tenant_id=tenant_id,
+                menu_item_id=menu_item_id,
+            ).first()
+            if existing:
+                skipped.append(
+                    {
+                        "menu_item_id": menu_item_id,
+                        "reason": "Menu item already linked to inventory",
+                    }
+                )
+                continue
+            link = InventoryMenuLink(
+                tenant_id=tenant_id,
+                inventory_item_id=inventory_item.id,
+                menu_item_id=menu_item_id,
+                deduction_ratio=deduction_ratio,
+                serving_type=serving_type,
+                serving_value=serving_value,
+            )
+            db.session.add(link)
+            created.append(menu_item_id)
+    db.session.commit()
+    return jsonify({"inventory_item_id": item_id, "created": created, "skipped": skipped}), 201
 
 
 @compat_bp.get("/inventory/items/<int:item_id>/links")
 @jwt_required()
 def inventory_links_list(item_id: int):
-    return jsonify([])
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    links = (
+        InventoryMenuLink.query.filter_by(tenant_id=tenant_id, inventory_item_id=item_id)
+        .order_by(InventoryMenuLink.id.asc())
+        .all()
+    )
+    return jsonify(
+        [
+            {
+                "id": link.id,
+                "menu_item_id": link.menu_item_id,
+                "menu_item_name": link.menu_item.name if link.menu_item else None,
+                "serving_type": link.serving_type or "custom_ml",
+                "serving_value": link.serving_value,
+                "deduction_ratio": link.deduction_ratio,
+            }
+            for link in links
+        ]
+    )
 
 
 @compat_bp.put("/inventory/items/links/<int:link_id>")
 @jwt_required()
 def inventory_link_update(link_id: int):
-    return jsonify({"id": link_id, "msg": "inventory sync not enabled yet"}), 501
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    link = InventoryMenuLink.query.filter_by(id=link_id, tenant_id=tenant_id).first()
+    if link is None:
+        return jsonify({"msg": "Link not found"}), 404
+    payload = request.get_json(silent=True) or {}
+    if "menu_item_id" in payload:
+        menu_item_id = payload.get("menu_item_id")
+        menu_row = MenuItem.query.filter_by(id=menu_item_id, tenant_id=tenant_id).first()
+        if menu_row is None:
+            return jsonify({"msg": "Menu item not found"}), 404
+        conflict = (
+            InventoryMenuLink.query.filter(
+                InventoryMenuLink.tenant_id == tenant_id,
+                InventoryMenuLink.menu_item_id == menu_item_id,
+                InventoryMenuLink.id != link.id,
+            )
+            .first()
+        )
+        if conflict:
+            return (
+                jsonify(
+                    {
+                        "msg": f"Conflict: Menu '{conflict.menu_item.name}' is already linked to inventory '{conflict.inventory_item.name}'"
+                    }
+                ),
+                400,
+            )
+        link.menu_item_id = menu_item_id
+    if "serving_type" in payload or "serving_value" in payload:
+        item = link.inventory_item
+        serving_type = str(payload.get("serving_type", link.serving_type or "custom_ml")).strip().lower()
+        value_raw = payload.get("serving_value", link.serving_value)
+        try:
+            serving_value = _inventory_positive_float(value_raw, "serving_value")
+        except ValueError as exc:
+            return jsonify({"msg": str(exc)}), 400
+        if serving_type == "custom_ml":
+            deduction_ratio = serving_value / float(item.container_size_ml or 1.0)
+        elif serving_type == "shot":
+            deduction_ratio = (float(item.default_shot_ml or 1.0) * serving_value) / float(item.container_size_ml or 1.0)
+        else:
+            deduction_ratio = serving_value
+        link.serving_type = serving_type
+        link.serving_value = serving_value
+        link.deduction_ratio = deduction_ratio
+    db.session.commit()
+    return jsonify({"msg": "Link updated successfully"}), 200
 
 
 @compat_bp.delete("/inventory/items/links/<int:link_id>")
 @jwt_required()
 def inventory_link_delete(link_id: int):
-    return jsonify({"id": link_id, "msg": "inventory sync not enabled yet"}), 501
-
-
-def _empty_inventory_rows():
-    return jsonify([])
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    link = InventoryMenuLink.query.filter_by(id=link_id, tenant_id=tenant_id).first()
+    if link is None:
+        return jsonify({"msg": "Link not found"}), 404
+    db.session.delete(link)
+    db.session.commit()
+    return jsonify({"msg": "Link deleted"}), 200
 
 
 @compat_bp.get("/inventory/purchases/")
 @jwt_required()
 def list_purchases():
-    return _empty_inventory_rows()
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    rows = (
+        StockPurchase.query.filter_by(tenant_id=tenant_id)
+        .order_by(StockPurchase.created_at.desc())
+        .all()
+    )
+    return jsonify(
+        [
+            {
+                "id": row.id,
+                "inventory_item_id": row.inventory_item_id,
+                "inventory_item_name": row.inventory_item.name if row.inventory_item else None,
+                "quantity": row.quantity,
+                "unit_price": row.unit_price,
+                "status": row.status,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ]
+    )
 
 
 @compat_bp.post("/inventory/purchases/")
 @jwt_required()
 def create_purchase():
-    return jsonify({"msg": "inventory sync not enabled yet"}), 501
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    payload = request.get_json(silent=True) or {}
+    inventory_item_id = payload.get("inventory_item_id")
+    quantity = _inventory_decimal(payload.get("quantity"))
+    unit_price = payload.get("unit_price")
+    if not inventory_item_id or quantity <= 0:
+        return jsonify({"msg": "inventory_item_id and valid quantity are required"}), 400
+    item = InventoryItem.query.filter_by(id=inventory_item_id, tenant_id=tenant_id).first()
+    if item is None:
+        return jsonify({"msg": "Inventory item not found"}), 404
+    purchase = StockPurchase(
+        tenant_id=tenant_id,
+        inventory_item_id=inventory_item_id,
+        quantity=quantity,
+        unit_price=unit_price,
+        status="Purchased",
+    )
+    db.session.add(purchase)
+    stock = StoreStock.query.filter_by(tenant_id=tenant_id, inventory_item_id=inventory_item_id).first()
+    if stock is None:
+        stock = StoreStock(tenant_id=tenant_id, inventory_item_id=inventory_item_id, quantity=0.0)
+        db.session.add(stock)
+    stock.quantity = _inventory_decimal(stock.quantity) + quantity
+    db.session.commit()
+    return jsonify({"msg": "Purchase recorded successfully", "purchase_id": purchase.id}), 201
 
 
 @compat_bp.get("/inventory/purchases/<int:item_id>")
 @jwt_required()
 def get_purchase(item_id: int):
-    return jsonify({"id": item_id})
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    row = StockPurchase.query.filter_by(id=item_id, tenant_id=tenant_id).first()
+    if row is None:
+        return jsonify({"msg": "Purchase not found"}), 404
+    return jsonify(
+        {
+            "id": row.id,
+            "inventory_item_id": row.inventory_item_id,
+            "inventory_item_name": row.inventory_item.name if row.inventory_item else None,
+            "quantity": row.quantity,
+            "unit_price": row.unit_price,
+            "status": row.status,
+            "created_at": row.created_at.isoformat(),
+        }
+    )
 
 
 @compat_bp.put("/inventory/purchases/<int:item_id>")
 @jwt_required()
 def update_purchase(item_id: int):
-    return jsonify({"id": item_id, "msg": "inventory sync not enabled yet"}), 501
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    row = StockPurchase.query.filter_by(id=item_id, tenant_id=tenant_id).first()
+    if row is None:
+        return jsonify({"msg": "Purchase not found"}), 404
+    if row.status == "Deleted":
+        return jsonify({"msg": "Deleted purchases cannot be edited"}), 400
+    payload = request.get_json(silent=True) or {}
+    new_quantity = payload.get("quantity", row.quantity)
+    try:
+        new_quantity = float(new_quantity)
+    except (TypeError, ValueError):
+        return jsonify({"msg": "Quantity must be a number"}), 400
+    if new_quantity <= 0:
+        return jsonify({"msg": "Quantity must be greater than zero"}), 400
+    stock = StoreStock.query.filter_by(tenant_id=tenant_id, inventory_item_id=row.inventory_item_id).first()
+    if stock is None:
+        stock = StoreStock(tenant_id=tenant_id, inventory_item_id=row.inventory_item_id, quantity=0.0)
+        db.session.add(stock)
+        db.session.flush()
+    quantity_diff = new_quantity - float(row.quantity or 0)
+    updated_quantity = _inventory_decimal(stock.quantity) + quantity_diff
+    if updated_quantity < 0:
+        return jsonify({"msg": "Cannot reduce purchase below remaining store stock"}), 400
+    stock.quantity = updated_quantity
+    row.quantity = new_quantity
+    row.unit_price = payload.get("unit_price", row.unit_price)
+    row.status = "Updated"
+    db.session.commit()
+    return jsonify({"msg": "Purchase updated successfully"}), 200
 
 
 @compat_bp.delete("/inventory/purchases/<int:item_id>")
 @jwt_required()
 def delete_purchase(item_id: int):
-    return jsonify({"id": item_id, "msg": "inventory sync not enabled yet"}), 501
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    row = StockPurchase.query.filter_by(id=item_id, tenant_id=tenant_id).first()
+    if row is None:
+        return jsonify({"msg": "Purchase not found"}), 404
+    if row.status == "Deleted":
+        return jsonify({"msg": "Purchase already deleted"}), 400
+    stock = StoreStock.query.filter_by(tenant_id=tenant_id, inventory_item_id=row.inventory_item_id).first()
+    if stock is None or _inventory_decimal(stock.quantity) < _inventory_decimal(row.quantity):
+        return jsonify({"msg": "Cannot delete purchase because stock has already been used"}), 400
+    stock.quantity = _inventory_decimal(stock.quantity) - _inventory_decimal(row.quantity)
+    row.status = "Deleted"
+    db.session.commit()
+    return jsonify({"msg": "Purchase deleted and store stock adjusted"}), 200
 
 
 @compat_bp.get("/inventory/transfers/")
 @jwt_required()
 def list_transfers():
-    return _empty_inventory_rows()
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    station_id = request.args.get("station_id", type=int)
+    query = StockTransfer.query.filter_by(tenant_id=tenant_id)
+    if station_id:
+        query = query.filter_by(station_id=station_id)
+    rows = query.order_by(StockTransfer.created_at.desc()).all()
+    return jsonify(
+        [
+            {
+                "id": row.id,
+                "inventory_item_id": row.inventory_item_id,
+                "inventory_item_name": row.inventory_item.name if row.inventory_item else None,
+                "station_id": row.station_id,
+                "station_name": row.station.name if row.station else None,
+                "quantity": row.quantity,
+                "status": row.status,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ]
+    )
 
 
 @compat_bp.post("/inventory/transfers/")
 @jwt_required()
 def create_transfer():
-    return jsonify({"msg": "inventory sync not enabled yet"}), 501
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    payload = request.get_json(silent=True) or {}
+    inventory_item_id = payload.get("inventory_item_id")
+    station_id = payload.get("station_id")
+    quantity = _inventory_decimal(payload.get("quantity"))
+    if not inventory_item_id or not station_id or quantity <= 0:
+        return jsonify({"msg": "inventory_item_id, station_id and valid quantity are required"}), 400
+    item = InventoryItem.query.filter_by(id=inventory_item_id, tenant_id=tenant_id).first()
+    if item is None:
+        return jsonify({"msg": "Inventory item not found"}), 404
+    station = Station.query.filter_by(id=station_id, tenant_id=tenant_id).first()
+    if station is None:
+        return jsonify({"msg": "Station not found"}), 404
+    store_stock = StoreStock.query.filter_by(tenant_id=tenant_id, inventory_item_id=inventory_item_id).first()
+    if store_stock is None or _inventory_decimal(store_stock.quantity) < quantity:
+        return jsonify({"msg": "Insufficient store stock"}), 400
+    store_stock.quantity = _inventory_decimal(store_stock.quantity) - quantity
+    station_stock = StationStock.query.filter_by(
+        tenant_id=tenant_id,
+        inventory_item_id=inventory_item_id,
+        station_id=station_id,
+    ).first()
+    if station_stock is None:
+        station_stock = StationStock(
+            tenant_id=tenant_id,
+            inventory_item_id=inventory_item_id,
+            station_id=station_id,
+            quantity=0.0,
+        )
+        db.session.add(station_stock)
+    station_stock.quantity = _inventory_decimal(station_stock.quantity) + quantity
+    transfer = StockTransfer(
+        tenant_id=tenant_id,
+        inventory_item_id=inventory_item_id,
+        station_id=station_id,
+        quantity=quantity,
+        status="Transferred",
+    )
+    db.session.add(transfer)
+    db.session.commit()
+    return jsonify({"msg": "Stock transferred successfully", "transfer_id": transfer.id}), 201
 
 
 @compat_bp.get("/inventory/transfers/<int:item_id>")
 @jwt_required()
 def get_transfer(item_id: int):
-    return jsonify({"id": item_id})
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    row = StockTransfer.query.filter_by(id=item_id, tenant_id=tenant_id).first()
+    if row is None:
+        return jsonify({"msg": "Transfer not found"}), 404
+    return jsonify(
+        {
+            "id": row.id,
+            "inventory_item_id": row.inventory_item_id,
+            "inventory_item_name": row.inventory_item.name if row.inventory_item else None,
+            "station_id": row.station_id,
+            "station_name": row.station.name if row.station else None,
+            "quantity": row.quantity,
+            "status": row.status,
+            "created_at": row.created_at.isoformat(),
+        }
+    )
 
 
 @compat_bp.put("/inventory/transfers/<int:item_id>")
 @jwt_required()
 def update_transfer(item_id: int):
-    return jsonify({"id": item_id, "msg": "inventory sync not enabled yet"}), 501
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    transfer = StockTransfer.query.filter_by(id=item_id, tenant_id=tenant_id).first()
+    if transfer is None:
+        return jsonify({"msg": "Transfer not found"}), 404
+    if transfer.status == "Deleted":
+        return jsonify({"msg": "Deleted transfers cannot be edited"}), 400
+    payload = request.get_json(silent=True) or {}
+    new_quantity = payload.get("quantity", transfer.quantity)
+    try:
+        new_quantity = float(new_quantity)
+    except (TypeError, ValueError):
+        return jsonify({"msg": "Quantity must be a number"}), 400
+    if new_quantity <= 0:
+        return jsonify({"msg": "Quantity must be greater than zero"}), 400
+    store_stock = StoreStock.query.filter_by(tenant_id=tenant_id, inventory_item_id=transfer.inventory_item_id).first()
+    if store_stock is None:
+        store_stock = StoreStock(tenant_id=tenant_id, inventory_item_id=transfer.inventory_item_id, quantity=0.0)
+        db.session.add(store_stock)
+        db.session.flush()
+    original_quantity = _inventory_decimal(transfer.quantity)
+    store_stock.quantity = _inventory_decimal(store_stock.quantity) + original_quantity
+    if _inventory_decimal(store_stock.quantity) < new_quantity:
+        return jsonify({"msg": "Insufficient store stock for update"}), 400
+    store_stock.quantity = _inventory_decimal(store_stock.quantity) - new_quantity
+    station_stock = StationStock.query.filter_by(
+        tenant_id=tenant_id,
+        inventory_item_id=transfer.inventory_item_id,
+        station_id=transfer.station_id,
+    ).first()
+    if station_stock is None:
+        station_stock = StationStock(
+            tenant_id=tenant_id,
+            inventory_item_id=transfer.inventory_item_id,
+            station_id=transfer.station_id,
+            quantity=0.0,
+        )
+        db.session.add(station_stock)
+    updated_station_qty = _inventory_decimal(station_stock.quantity) + (new_quantity - original_quantity)
+    if updated_station_qty < 0:
+        return jsonify({"msg": "Cannot reduce transfer below remaining station stock"}), 400
+    station_stock.quantity = updated_station_qty
+    transfer.quantity = new_quantity
+    transfer.status = "Updated"
+    db.session.commit()
+    return jsonify({"msg": "Transfer updated successfully"}), 200
 
 
 @compat_bp.delete("/inventory/transfers/<int:item_id>")
 @jwt_required()
 def delete_transfer(item_id: int):
-    return jsonify({"id": item_id, "msg": "inventory sync not enabled yet"}), 501
-
-
-@compat_bp.get("/inventory/snapshots/")
-@jwt_required()
-def list_snapshots():
-    return _empty_inventory_rows()
-
-
-@compat_bp.post("/inventory/snapshots/")
-@jwt_required()
-def create_snapshot():
-    return jsonify({"msg": "inventory sync not enabled yet"}), 501
-
-
-@compat_bp.get("/inventory/snapshots/<int:item_id>")
-@jwt_required()
-def get_snapshot(item_id: int):
-    return jsonify({"id": item_id})
-
-
-@compat_bp.put("/inventory/snapshots/<int:item_id>")
-@jwt_required()
-def update_snapshot(item_id: int):
-    return jsonify({"id": item_id, "msg": "inventory sync not enabled yet"}), 501
-
-
-@compat_bp.delete("/inventory/snapshots/<int:item_id>")
-@jwt_required()
-def delete_snapshot(item_id: int):
-    return jsonify({"id": item_id, "msg": "inventory sync not enabled yet"}), 501
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    transfer = StockTransfer.query.filter_by(id=item_id, tenant_id=tenant_id).first()
+    if transfer is None:
+        return jsonify({"msg": "Transfer not found"}), 404
+    if transfer.status == "Deleted":
+        return jsonify({"msg": "Transfer already deleted"}), 400
+    store_stock = StoreStock.query.filter_by(tenant_id=tenant_id, inventory_item_id=transfer.inventory_item_id).first()
+    if store_stock:
+        store_stock.quantity = _inventory_decimal(store_stock.quantity) + _inventory_decimal(transfer.quantity)
+    station_stock = StationStock.query.filter_by(
+        tenant_id=tenant_id,
+        inventory_item_id=transfer.inventory_item_id,
+        station_id=transfer.station_id,
+    ).first()
+    if station_stock is None or _inventory_decimal(station_stock.quantity) < _inventory_decimal(transfer.quantity):
+        return jsonify({"msg": "Cannot delete transfer because stock has already been used at the station"}), 400
+    station_stock.quantity = _inventory_decimal(station_stock.quantity) - _inventory_decimal(transfer.quantity)
+    transfer.status = "Deleted"
+    db.session.commit()
+    return jsonify({"msg": "Transfer deleted and stock quantities adjusted"}), 200
 
 
 @compat_bp.get("/inventory/stock/store")
 @jwt_required()
 def inventory_stock_store():
-    return jsonify([])
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    rows = (
+        StoreStock.query.filter_by(tenant_id=tenant_id)
+        .order_by(StoreStock.updated_at.desc())
+        .all()
+    )
+    return jsonify(
+        [
+            {
+                "id": row.id,
+                "inventory_item_id": row.inventory_item_id,
+                "inventory_item_name": row.inventory_item.name if row.inventory_item else None,
+                "quantity": row.quantity,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            }
+            for row in rows
+        ]
+    )
 
 
 @compat_bp.get("/inventory/stock/station")
 @jwt_required()
 def inventory_stock_station():
-    return jsonify([])
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    station_id = request.args.get("station_id", type=int)
+    query = StationStock.query.filter_by(tenant_id=tenant_id)
+    if station_id:
+        query = query.filter_by(station_id=station_id)
+    rows = query.order_by(StationStock.updated_at.desc()).all()
+    return jsonify(
+        [
+            {
+                "id": row.id,
+                "station_id": row.station_id,
+                "station_name": row.station.name if row.station else None,
+                "inventory_item_id": row.inventory_item_id,
+                "inventory_item_name": row.inventory_item.name if row.inventory_item else None,
+                "quantity": row.quantity,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            }
+            for row in rows
+        ]
+    )
 
 
 @compat_bp.get("/inventory/stock/overall")
 @jwt_required()
 def inventory_stock_overall():
-    return jsonify({"items": [], "totals": {"store": 0, "station": 0}})
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    items = InventoryItem.query.filter_by(tenant_id=tenant_id).order_by(InventoryItem.name.asc()).all()
+    store_rows = StoreStock.query.filter_by(tenant_id=tenant_id).all()
+    station_rows = StationStock.query.filter_by(tenant_id=tenant_id).all()
+    store_map = {row.inventory_item_id: _inventory_decimal(row.quantity) for row in store_rows}
+    station_map = {}
+    for row in station_rows:
+        station_map[row.inventory_item_id] = _inventory_decimal(station_map.get(row.inventory_item_id, 0.0)) + _inventory_decimal(
+            row.quantity
+        )
+    results = []
+    for item in items:
+        store_qty = store_map.get(item.id, 0.0)
+        station_qty = station_map.get(item.id, 0.0)
+        results.append(
+            {
+                "inventory_item_id": item.id,
+                "menu_item": item.name,
+                "store_quantity": store_qty,
+                "station_quantity": station_qty,
+                "total_quantity": store_qty + station_qty,
+            }
+        )
+    return jsonify(results)
 
 
 @compat_bp.get("/inventory/stock/overview")
 @jwt_required()
 def inventory_stock_overview():
-    return jsonify({"store_items": 0, "station_items": 0, "low_stock_count": 0, "out_of_stock_count": 0})
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    items = InventoryItem.query.filter_by(tenant_id=tenant_id).order_by(InventoryItem.name.asc()).all()
+    stations = Station.query.filter_by(tenant_id=tenant_id).order_by(Station.name.asc()).all()
+    store_rows = StoreStock.query.filter_by(tenant_id=tenant_id).all()
+    station_rows = StationStock.query.filter_by(tenant_id=tenant_id).all()
+    store_map = {row.inventory_item_id: _inventory_decimal(row.quantity) for row in store_rows}
+    station_map = {}
+    for row in station_rows:
+        station_map[(row.station_id, row.inventory_item_id)] = _inventory_decimal(row.quantity)
+    payload_rows = []
+    for item in items:
+        station_values = []
+        total_station_quantity = 0.0
+        for station in stations:
+            qty = station_map.get((station.id, item.id), 0.0)
+            total_station_quantity += qty
+            station_values.append(
+                {
+                    "station_id": station.id,
+                    "station_name": station.name,
+                    "quantity": qty,
+                }
+            )
+        store_quantity = store_map.get(item.id, 0.0)
+        payload_rows.append(
+            {
+                "inventory_item_id": item.id,
+                "inventory_item_name": item.name,
+                "container_size_ml": _inventory_decimal(item.container_size_ml),
+                "default_shot_ml": _inventory_decimal(item.default_shot_ml),
+                "store_quantity": store_quantity,
+                "total_station_quantity": total_station_quantity,
+                "total_quantity": store_quantity + total_station_quantity,
+                "stations": station_values,
+            }
+        )
+    return jsonify(
+        {
+            "stations": [{"id": station.id, "name": station.name} for station in stations],
+            "rows": payload_rows,
+            "generated_for": None,
+        }
+    )
 
 
 @compat_bp.get("/inventory/stock/daily-history")
 @jwt_required()
 def inventory_daily_history():
-    return jsonify([])
-
-
-@compat_bp.post("/inventory/stock/store")
-@compat_bp.put("/inventory/stock/store/<int:item_id>")
-@compat_bp.delete("/inventory/stock/store/<int:item_id>")
-@compat_bp.post("/inventory/stock/station")
-@compat_bp.put("/inventory/stock/station/<int:item_id>")
-@compat_bp.delete("/inventory/stock/station/<int:item_id>")
-@jwt_required()
-def inventory_mutation_stub(item_id=None):
-    return jsonify({"msg": "inventory sync not enabled yet"}), 501
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    items = InventoryItem.query.filter_by(tenant_id=tenant_id).order_by(InventoryItem.name.asc()).all()
+    stations = Station.query.filter_by(tenant_id=tenant_id).order_by(Station.name.asc()).all()
+    station_rows = StationStock.query.filter_by(tenant_id=tenant_id).all()
+    station_map = {(row.station_id, row.inventory_item_id): _inventory_decimal(row.quantity) for row in station_rows}
+    rows = []
+    for station in stations:
+        for item in items:
+            qty = station_map.get((station.id, item.id), 0.0)
+            if qty == 0.0:
+                continue
+            rows.append(
+                {
+                    "scope_type": "station",
+                    "scope_id": station.id,
+                    "scope_name": station.name,
+                    "inventory_item_id": item.id,
+                    "inventory_item_name": item.name,
+                    "opening_quantity": qty,
+                    "purchased_quantity": 0.0,
+                    "transferred_out_quantity": 0.0,
+                    "transferred_in_quantity": 0.0,
+                    "sold_quantity": 0.0,
+                    "void_quantity": 0.0,
+                    "closing_quantity": qty,
+                }
+            )
+    return jsonify(
+        {
+            "business_date": None,
+            "business_day_start": None,
+            "business_day_end": None,
+            "scope": "station",
+            "stations": [{"id": station.id, "name": station.name} for station in stations],
+            "rows": rows,
+        }
+    )

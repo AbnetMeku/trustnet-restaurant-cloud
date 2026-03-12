@@ -226,3 +226,153 @@ class SyncEvent(db.Model):
     operation = db.Column(db.String(32), nullable=False)
     payload = db.Column(db.JSON, nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class InventoryItem(db.Model):
+    __tablename__ = "inventory_items"
+    __table_args__ = (
+        db.UniqueConstraint("tenant_id", "name", name="uq_inventory_item_name_per_tenant"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    name = db.Column(db.String(120), nullable=False)
+    unit = db.Column(db.String(50), nullable=False, default="Bottle")
+    serving_unit = db.Column(db.String(50), nullable=False, default="unit")
+    servings_per_unit = db.Column(db.Float, nullable=False, default=1.0)
+    container_size_ml = db.Column(db.Float, nullable=False, default=1.0)
+    default_shot_ml = db.Column(db.Float, nullable=False, default=1.0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+    menu_links = db.relationship("InventoryMenuLink", backref="inventory_item", cascade="all, delete-orphan")
+    store_stock = db.relationship("StoreStock", backref="inventory_item", uselist=False, cascade="all, delete-orphan")
+    station_stocks = db.relationship("StationStock", backref="inventory_item", cascade="all, delete-orphan")
+    purchases = db.relationship("StockPurchase", backref="inventory_item", cascade="all, delete-orphan")
+    transfers = db.relationship("StockTransfer", backref="inventory_item", cascade="all, delete-orphan")
+    store_snapshots = db.relationship("StoreStockSnapshot", backref="inventory_item", cascade="all, delete-orphan")
+    snapshots = db.relationship("StationStockSnapshot", backref="inventory_item", cascade="all, delete-orphan")
+
+
+class InventoryMenuLink(db.Model):
+    __tablename__ = "inventory_menu_links"
+    __table_args__ = (
+        db.UniqueConstraint("tenant_id", "inventory_item_id", "menu_item_id", name="uq_inventory_menu_link_per_tenant"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    inventory_item_id = db.Column(db.Integer, db.ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
+    menu_item_id = db.Column(db.Integer, db.ForeignKey("menu_items.id", ondelete="CASCADE"), nullable=False)
+
+    deduction_ratio = db.Column(db.Float, nullable=False, default=1.0)
+    serving_type = db.Column(db.String(20), nullable=False, default="custom_ml")
+    serving_value = db.Column(db.Float, nullable=False, default=1.0)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+    menu_item = db.relationship("MenuItem", backref="inventory_links")
+
+
+class StoreStock(db.Model):
+    __tablename__ = "store_stock"
+    __table_args__ = (
+        db.UniqueConstraint("tenant_id", "inventory_item_id", name="uq_store_stock_per_tenant_item"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    inventory_item_id = db.Column(db.Integer, db.ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
+    quantity = db.Column(db.Float, nullable=False, default=0.0)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
+class StationStock(db.Model):
+    __tablename__ = "station_stock"
+    __table_args__ = (
+        db.UniqueConstraint("tenant_id", "station_id", "inventory_item_id", name="uq_station_inventory_per_tenant"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    station_id = db.Column(db.Integer, db.ForeignKey("stations.id", ondelete="CASCADE"), nullable=False)
+    inventory_item_id = db.Column(db.Integer, db.ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
+    quantity = db.Column(db.Float, nullable=False, default=0.0)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+    station = db.relationship("Station", backref="station_stocks")
+
+
+class StockPurchase(db.Model):
+    __tablename__ = "stock_purchases"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    inventory_item_id = db.Column(db.Integer, db.ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
+    quantity = db.Column(db.Float, nullable=False)
+    unit_price = db.Column(db.Float, nullable=True)
+    status = db.Column(db.String(20), nullable=False, default="Purchased")
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class StockTransfer(db.Model):
+    __tablename__ = "stock_transfers"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    inventory_item_id = db.Column(db.Integer, db.ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
+    station_id = db.Column(db.Integer, db.ForeignKey("stations.id", ondelete="CASCADE"), nullable=False)
+    quantity = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="Transferred")
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+    station = db.relationship("Station", backref="stock_transfers")
+
+
+class StationStockSnapshot(db.Model):
+    __tablename__ = "station_stock_snapshots"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "tenant_id",
+            "station_id",
+            "inventory_item_id",
+            "snapshot_date",
+            name="uq_station_item_date_per_tenant",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    station_id = db.Column(db.Integer, db.ForeignKey("stations.id", ondelete="CASCADE"), nullable=False)
+    inventory_item_id = db.Column(db.Integer, db.ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
+    snapshot_date = db.Column(db.Date, nullable=False)
+
+    start_of_day_quantity = db.Column(db.Float, nullable=False)
+    added_quantity = db.Column(db.Float, nullable=False, default=0.0)
+    sold_quantity = db.Column(db.Float, nullable=False, default=0.0)
+    void_quantity = db.Column(db.Float, nullable=False, default=0.0)
+    remaining_quantity = db.Column(db.Float, nullable=False, default=0.0)
+
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+    station = db.relationship("Station", backref="snapshots")
+
+
+class StoreStockSnapshot(db.Model):
+    __tablename__ = "store_stock_snapshots"
+    __table_args__ = (
+        db.UniqueConstraint("tenant_id", "inventory_item_id", "snapshot_date", name="uq_store_item_date_per_tenant"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    inventory_item_id = db.Column(db.Integer, db.ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
+    snapshot_date = db.Column(db.Date, nullable=False)
+
+    opening_quantity = db.Column(db.Float, nullable=False, default=0.0)
+    purchased_quantity = db.Column(db.Float, nullable=False, default=0.0)
+    transferred_out_quantity = db.Column(db.Float, nullable=False, default=0.0)
+    closing_quantity = db.Column(db.Float, nullable=False, default=0.0)
+
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+

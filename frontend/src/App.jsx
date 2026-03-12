@@ -6,11 +6,12 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import AdminDashboard from "./pages/AdminDashboard";
 import InventoryDashboard from "./pages/InventoryDashboard";
 import Login from "./pages/Login";
+import SuperAdminLogin from "./pages/SuperAdminLogin";
 
-function ProtectedRoute({ children, roles }) {
+function ProtectedRoute({ children, roles, redirectTo = "/login" }) {
   const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to={redirectTo} replace />;
+  if (roles && !roles.includes(user.role)) return <Navigate to={redirectTo} replace />;
   return children;
 }
 
@@ -290,6 +291,7 @@ function AppRoutes() {
       <Toaster position="top-center" />
       <Routes>
         <Route path="/login" element={user ? <Navigate to={user.role === "super_admin" ? "/super-admin" : "/admin"} replace /> : <Login />} />
+        <Route path="/super-admin/login" element={user ? <Navigate to={user.role === "super_admin" ? "/super-admin" : "/admin"} replace /> : <SuperAdminLogin />} />
         <Route
           path="/admin"
           element={
@@ -309,7 +311,7 @@ function AppRoutes() {
         <Route
           path="/super-admin"
           element={
-            <ProtectedRoute roles={["super_admin"]}>
+            <ProtectedRoute roles={["super_admin"]} redirectTo="/super-admin/login">
               <SuperAdminDashboard />
             </ProtectedRoute>
           }

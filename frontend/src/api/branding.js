@@ -16,6 +16,7 @@ export const DEFAULT_BRANDING = {
   kitchen_tag_category_name: null,
   kitchen_tag_subcategory_name: null,
   kitchen_tag_subcategory_names: [],
+  custom_branding_locked: false,
 };
 
 const getAuthHeader = (token) => ({

@@ -1,9 +1,10 @@
 from decimal import Decimal
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
+from flask_jwt_extended import get_jwt
 from werkzeug.security import generate_password_hash
 
-from ..auth import roles_required, tenant_access_required
+from ..auth import extract_roles_from_claims, roles_required, tenant_access_required
 from ..extensions import db
 from ..models import BrandingSettings, Category, MenuItem, OrderSummary, Station, Store, SubCategory, Table, Tenant, User
 
@@ -332,6 +333,8 @@ def get_branding(tenant_id: int):
             "kitchen_tag_category_id": row.kitchen_tag_category_id,
             "kitchen_tag_subcategory_id": row.kitchen_tag_subcategory_id,
             "kitchen_tag_subcategory_ids": row.kitchen_tag_subcategory_ids or [],
+            "custom_branding_locked": current_app.config.get("DISABLE_TENANT_CUSTOM_BRANDING", False)
+            and "super_admin" not in extract_roles_from_claims(get_jwt()),
         }
     )
 
@@ -346,8 +349,14 @@ def update_branding(tenant_id: int):
         row = BrandingSettings(tenant_id=tenant_id)
         db.session.add(row)
 
-    row.logo_url = payload.get("logo_url")
-    row.background_url = payload.get("background_url")
+    roles = extract_roles_from_claims(get_jwt())
+    custom_branding_locked = current_app.config.get("DISABLE_TENANT_CUSTOM_BRANDING", False) and "super_admin" not in roles
+    if custom_branding_locked and any(field in payload for field in ("logo_url", "background_url")):
+        return jsonify({"error": "Custom branding is centrally managed in the cloud."}), 403
+
+    if not custom_branding_locked:
+        row.logo_url = payload.get("logo_url")
+        row.background_url = payload.get("background_url")
     row.business_day_start_time = (payload.get("business_day_start_time") or row.business_day_start_time or "06:00").strip()
     row.print_preview_enabled = bool(payload.get("print_preview_enabled", row.print_preview_enabled))
     row.kds_mark_unavailable_enabled = bool(payload.get("kds_mark_unavailable_enabled", row.kds_mark_unavailable_enabled))
@@ -356,7 +365,13 @@ def update_branding(tenant_id: int):
     row.kitchen_tag_subcategory_ids = payload.get("kitchen_tag_subcategory_ids") or []
     db.session.commit()
 
-    return jsonify({"tenant_id": tenant_id, "updated_at": row.updated_at.isoformat()})
+    return jsonify(
+        {
+            "tenant_id": tenant_id,
+            "updated_at": row.updated_at.isoformat(),
+            "custom_branding_locked": custom_branding_locked,
+        }
+    )
 
 
 @admin_bp.get("/tenants/<int:tenant_id>/reports/orders")

@@ -21,3 +21,9 @@ class Config:
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", SECRET_KEY)
     HOST = os.environ.get("HOST", "127.0.0.1")
     PORT = int(os.environ.get("PORT", "7000"))
+    DISABLE_TENANT_CUSTOM_BRANDING = os.environ.get("DISABLE_TENANT_CUSTOM_BRANDING", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }

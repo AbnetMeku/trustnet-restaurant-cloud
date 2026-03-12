@@ -9,3 +9,6 @@ __pycache__/
 venv/
 instance/
 cloud.db
+frontend/node_modules/
+frontend/dist/
+pytest-cache-files-*/

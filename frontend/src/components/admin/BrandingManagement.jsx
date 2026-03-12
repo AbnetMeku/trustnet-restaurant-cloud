@@ -45,6 +45,8 @@ const DEFAULT_FORM = {
   kitchen_tag_subcategory_ids: [],
 };
 
+const CUSTOM_BRANDING_DISABLED_ENV = String(import.meta.env.VITE_DISABLE_CUSTOM_BRANDING ?? "true").toLowerCase() !== "false";
+
 export default function BrandingManagement() {
   const { user, authToken } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -53,6 +55,7 @@ export default function BrandingManagement() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBackground, setUploadingBackground] = useState(false);
+  const [brandingLocked, setBrandingLocked] = useState(CUSTOM_BRANDING_DISABLED_ENV);
   const [activeTab, setActiveTab] = useState("branding");
   const [kitchenTagEnabled, setKitchenTagEnabled] = useState(false);
   const [subcategories, setSubcategories] = useState([]);
@@ -62,6 +65,7 @@ export default function BrandingManagement() {
     start_date: "",
     end_date: "",
   });
+  const allowBrandAssets = !brandingLocked || user?.cloud_role === "super_admin";
 
   useEffect(() => {
     const load = async () => {
@@ -88,6 +92,7 @@ export default function BrandingManagement() {
         });
         setKitchenTagEnabled(selectedIds.length > 0);
         setPreview(settings);
+        setBrandingLocked(CUSTOM_BRANDING_DISABLED_ENV || Boolean(settings.custom_branding_locked));
       } catch (error) {
         toast.error(getApiErrorMessage(error, "Failed to load settings. Please refresh and try again."));
       } finally {
@@ -97,6 +102,12 @@ export default function BrandingManagement() {
 
     load();
   }, [authToken]);
+
+  useEffect(() => {
+    if (!allowBrandAssets && activeTab === "branding") {
+      setActiveTab("operations");
+    }
+  }, [allowBrandAssets, activeTab]);
 
   const kitchenTagSummary = Array.isArray(preview.kitchen_tag_subcategory_names) && preview.kitchen_tag_subcategory_names.length > 0
     ? preview.kitchen_tag_subcategory_names.join(", ")
@@ -182,21 +193,25 @@ export default function BrandingManagement() {
     });
     setKitchenTagEnabled(nextIds.length > 0);
     setPreview(data);
+    setBrandingLocked(CUSTOM_BRANDING_DISABLED_ENV || Boolean(data.custom_branding_locked));
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const data = await updateBrandingSettings({
-        logo_url: form.logo_url,
-        background_url: form.background_url,
+      const payload = {
         business_day_start_time: form.business_day_start_time,
         print_preview_enabled: Boolean(form.print_preview_enabled),
         kds_mark_unavailable_enabled: Boolean(form.kds_mark_unavailable_enabled),
         kitchen_tag_category_id: null,
         kitchen_tag_subcategory_id: null,
         kitchen_tag_subcategory_ids: kitchenTagEnabled ? form.kitchen_tag_subcategory_ids : [],
-      });
+      };
+      if (allowBrandAssets) {
+        payload.logo_url = form.logo_url;
+        payload.background_url = form.background_url;
+      }
+      const data = await updateBrandingSettings(payload);
       applySettingsToState(data);
       toast.success("Settings updated successfully");
     } catch (error) {
@@ -209,16 +224,19 @@ export default function BrandingManagement() {
   const handleResetDefaults = async () => {
     setSaving(true);
     try {
-      const data = await updateBrandingSettings({
-        logo_url: "",
-        background_url: "",
+      const payload = {
         business_day_start_time: "06:00",
         print_preview_enabled: false,
         kds_mark_unavailable_enabled: false,
         kitchen_tag_category_id: null,
         kitchen_tag_subcategory_id: null,
         kitchen_tag_subcategory_ids: [],
-      });
+      };
+      if (allowBrandAssets) {
+        payload.logo_url = "";
+        payload.background_url = "";
+      }
+      const data = await updateBrandingSettings(payload);
       applySettingsToState(data);
       toast.success("Settings reset to defaults");
     } catch (error) {
@@ -229,6 +247,10 @@ export default function BrandingManagement() {
   };
 
   const handleUpload = async (assetType, file) => {
+    if (!allowBrandAssets) {
+      toast.error("Custom branding is centrally managed for this tenant.");
+      return;
+    }
     if (!file) return;
     const maxSizeBytes = 5 * 1024 * 1024;
     const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
@@ -322,14 +344,18 @@ export default function BrandingManagement() {
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="bg-white/15 text-white">
-                  <TabsTrigger value="branding" className="data-[state=active]:bg-white data-[state=active]:text-slate-950">
-                    Branding
-                  </TabsTrigger>
-                  <TabsTrigger value="operations" className="data-[state=active]:bg-white data-[state=active]:text-slate-950">
-                    Operations
-                  </TabsTrigger>
-                </TabsList>
+                {allowBrandAssets ? (
+                  <TabsList className="bg-white/15 text-white">
+                    <TabsTrigger value="branding" className="data-[state=active]:bg-white data-[state=active]:text-slate-950">
+                      Branding
+                    </TabsTrigger>
+                    <TabsTrigger value="operations" className="data-[state=active]:bg-white data-[state=active]:text-slate-950">
+                      Operations
+                    </TabsTrigger>
+                  </TabsList>
+                ) : (
+                  <div className="rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white/90">Operations</div>
+                )}
               </Tabs>
               <Button
                 variant="outline"
@@ -340,12 +366,18 @@ export default function BrandingManagement() {
                 Reset to Default
               </Button>
             </div>
+            {!allowBrandAssets && (
+              <p className="text-xs font-medium text-amber-200">
+                Custom branding is centrally managed for hosted tenants. Operations settings remain available below.
+              </p>
+            )}
           </div>
         </div>
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-0">
-        <TabsContent value="branding" className="mt-0">
+        {allowBrandAssets && (
+          <TabsContent value="branding" className="mt-0">
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <Card className="admin-card p-4 space-y-4 backdrop-blur-sm">
               <div>
@@ -426,9 +458,15 @@ export default function BrandingManagement() {
             </Card>
           </div>
         </TabsContent>
+        )}
 
         <TabsContent value="operations" className="mt-0">
           <div className="space-y-4">
+            {!allowBrandAssets && (
+              <Card className="admin-card border border-amber-400/50 bg-amber-50/20 p-4 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                Custom branding updates (logos and images) are disabled in the TrustNet Cloud tenant portal. Please contact the super admin team if you need to request a change.
+              </Card>
+            )}
             {user?.role === "admin" && (
               <Card className="admin-card space-y-4 border border-red-200/80 p-4 backdrop-blur-sm dark:border-red-900/70">
                 <div className="space-y-1">
