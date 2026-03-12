@@ -50,11 +50,11 @@ class Store(db.Model):
 
 class User(db.Model):
     __tablename__ = "users"
-    __table_args__ = (db.UniqueConstraint("tenant_id", "username", name="uq_username_per_tenant"),)
+    __table_args__ = (db.UniqueConstraint("username", name="uq_username_global"),)
 
     id = db.Column(db.Integer, primary_key=True)
     tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
-    username = db.Column(db.String(80), nullable=False)
+    username = db.Column(db.String(80), nullable=False, unique=True)
     password_hash = db.Column(db.Text, nullable=False)
     role = db.Column(db.String(32), nullable=False)
     waiter_profile_id = db.Column(db.Integer, db.ForeignKey("waiter_profiles.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -375,4 +375,3 @@ class StoreStockSnapshot(db.Model):
     closing_quantity = db.Column(db.Float, nullable=False, default=0.0)
 
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
-

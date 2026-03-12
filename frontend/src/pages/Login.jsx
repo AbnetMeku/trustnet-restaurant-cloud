@@ -10,7 +10,6 @@ export default function Login() {
   const { login } = useAuth();
   const branding = useBranding();
   const navigate = useNavigate();
-  const [tenantCode, setTenantCode] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -19,14 +18,9 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    const trimmedTenantCode = tenantCode.trim();
-    if (!trimmedTenantCode) {
-      setError("Tenant code is required");
-      return;
-    }
     setSubmitting(true);
     try {
-      const payload = { username, password, tenant_code: trimmedTenantCode };
+      const payload = { username, password };
       const res = await axios.post("/api/auth/login", payload);
       const { user: nextUser, access_token } = res.data;
       const userData = {
@@ -65,22 +59,10 @@ export default function Login() {
         className="relative z-10 flex w-full max-w-xs flex-col items-center rounded-xl bg-white/20 p-6 shadow-2xl backdrop-blur-md transition-transform duration-500 ease-out md:max-w-sm md:p-10"
       >
         <img src={branding.logo_url} alt="TrustNet Logo" className="mx-auto mb-6 h-20 w-20 object-contain md:h-24 md:w-24" />
-        <h2 className="mb-1 text-center text-2xl font-bold text-white md:text-3xl">Tenant Sign In</h2>
-        <p className="mb-4 text-center text-sm text-white/80">Enter your tenant code and credentials to continue.</p>
+        <h2 className="mb-1 text-center text-2xl font-bold text-white md:text-3xl">Sign In</h2>
+        <p className="mb-4 text-center text-sm text-white/80">Enter your username and password to continue.</p>
 
         {error && <p className="mb-4 w-full rounded-lg bg-red-900/30 px-3 py-2 text-center text-sm text-red-100 md:text-base">{error}</p>}
-
-        <div className="mb-4 w-full">
-          <label className="mb-2 block font-medium text-white">Tenant Code</label>
-          <input
-            type="text"
-            value={tenantCode}
-            onChange={(e) => setTenantCode(e.target.value)}
-            placeholder="tenant code"
-            required
-            className="w-full rounded-lg border border-white/30 bg-white/10 px-4 py-2 text-white placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-blue-400"
-          />
-        </div>
 
         <div className="mb-4 w-full">
           <label className="mb-2 block font-medium text-white">Username</label>

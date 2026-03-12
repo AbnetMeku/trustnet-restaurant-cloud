@@ -7,7 +7,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..auth import roles_required
 from ..extensions import db
-from ..models import Store, Tenant, User
+from ..models import Store, User
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -26,6 +26,8 @@ def bootstrap_super_admin():
     password = payload.get("password") or ""
     if not username or not password:
         return jsonify({"error": "username and password are required"}), 400
+    if User.query.filter_by(username=username).first():
+        return jsonify({"error": "username already exists"}), 409
 
     user = User(
         tenant_id=None,
@@ -43,19 +45,11 @@ def login():
     payload = request.get_json(silent=True) or {}
     username = (payload.get("username") or "").strip()
     password = payload.get("password") or ""
-    tenant_code = (payload.get("tenant_code") or "").strip().lower() or None
 
     if not username or not password:
         return jsonify({"error": "username and password are required"}), 400
 
     query = User.query.filter_by(username=username, is_active=True)
-    if tenant_code:
-        tenant = Tenant.query.filter_by(code=tenant_code, is_active=True).first()
-        if tenant is None:
-            return jsonify({"error": "tenant not found"}), 404
-        query = query.filter_by(tenant_id=tenant.id)
-    else:
-        query = query.filter(User.role == "super_admin")
 
     user = query.first()
     if user is None or not check_password_hash(user.password_hash, password):
@@ -113,6 +107,8 @@ def create_tenant_user():
         return jsonify({"error": "tenant_id, username, and password are required"}), 400
     if role not in {"tenant_admin", "manager", "cashier"}:
         return jsonify({"error": "invalid role"}), 400
+    if User.query.filter_by(username=username).first():
+        return jsonify({"error": "username already exists"}), 409
 
     user = User(
         tenant_id=tenant_id,
@@ -128,5 +124,5 @@ def create_tenant_user():
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
-        return jsonify({"error": "username already exists for this tenant"}), 409
+        return jsonify({"error": "username already exists"}), 409
     return jsonify({"id": user.id, "username": user.username, "role": user.role, "tenant_id": user.tenant_id}), 201

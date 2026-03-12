@@ -222,6 +222,8 @@ def create_user_flat():
         return jsonify({"msg": "invalid role"}), 400
     if not username or not password:
         return jsonify({"msg": "username and password/pin are required"}), 400
+    if User.query.filter_by(username=username).first():
+        return jsonify({"msg": "username already exists"}), 409
     row = User(
         tenant_id=tenant_id,
         username=username,
@@ -247,7 +249,11 @@ def update_user_flat(user_id: int):
     row = User.query.filter_by(id=user_id, tenant_id=tenant_id).first_or_404()
     payload = request.get_json(silent=True) or {}
     if payload.get("username"):
-        row.username = payload["username"].strip()
+        next_username = payload["username"].strip()
+        if next_username and next_username != row.username:
+            if User.query.filter(User.username == next_username, User.id != row.id).first():
+                return jsonify({"msg": "username already exists"}), 409
+        row.username = next_username
     if payload.get("role"):
         role = payload["role"].strip().lower()
         row.role = "tenant_admin" if role == "admin" else role

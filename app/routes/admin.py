@@ -135,6 +135,8 @@ def create_user(tenant_id: int):
 
     if not username or not password or role not in {"tenant_admin", "manager", "cashier"}:
         return jsonify({"error": "username, password, and a valid role are required"}), 400
+    if User.query.filter_by(username=username).first():
+        return jsonify({"error": "username already exists"}), 409
 
     user = User(
         tenant_id=tenant_id,

@@ -30,10 +30,10 @@ def create_tenant_admin(client, super_token, tenant_id, username, password="tena
     return resp.get_json()
 
 
-def login_tenant_admin(client, tenant_code, username, password="tenantpass"):
+def login_tenant_admin(client, username, password="tenantpass"):
     resp = client.post(
         "/api/auth/login",
-        json={"tenant_code": tenant_code, "username": username, "password": password},
+        json={"username": username, "password": password},
     )
     assert resp.status_code == 200
     payload = resp.get_json()
@@ -52,7 +52,7 @@ def provision_tenant_with_admin(client, super_token, code_suffix):
     )
     tenant_id = tenant["tenant"]["id"]
     create_tenant_admin(client, super_token, tenant_id, f"{code}-admin")
-    tenant_token, user_payload = login_tenant_admin(client, code, f"{code}-admin")
+    tenant_token, user_payload = login_tenant_admin(client, f"{code}-admin")
     return {
         "tenant_id": tenant_id,
         "tenant_code": code,
