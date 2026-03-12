@@ -116,7 +116,7 @@ export default function Login() {
 
         <p className="mt-6 text-center text-xs text-white/70">
           Super admin access is available at{" "}
-          <a href="/super-admin/login" className="font-semibold text-white underline underline-offset-2 hover:text-blue-100">
+          <a href="/trustadmin" className="font-semibold text-white underline underline-offset-2 hover:text-blue-100">
             the root portal
           </a>
           .

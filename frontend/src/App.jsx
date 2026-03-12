@@ -291,7 +291,7 @@ function AppRoutes() {
       <Toaster position="top-center" />
       <Routes>
         <Route path="/login" element={user ? <Navigate to={user.role === "super_admin" ? "/super-admin" : "/admin"} replace /> : <Login />} />
-        <Route path="/super-admin/login" element={user ? <Navigate to={user.role === "super_admin" ? "/super-admin" : "/admin"} replace /> : <SuperAdminLogin />} />
+        <Route path="/trustadmin" element={user ? <Navigate to={user.role === "super_admin" ? "/super-admin" : "/admin"} replace /> : <SuperAdminLogin />} />
         <Route
           path="/admin"
           element={
@@ -311,7 +311,7 @@ function AppRoutes() {
         <Route
           path="/super-admin"
           element={
-            <ProtectedRoute roles={["super_admin"]} redirectTo="/super-admin/login">
+            <ProtectedRoute roles={["super_admin"]} redirectTo="/trustadmin">
               <SuperAdminDashboard />
             </ProtectedRoute>
           }
