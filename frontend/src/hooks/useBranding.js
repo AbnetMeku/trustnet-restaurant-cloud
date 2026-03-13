@@ -8,8 +8,10 @@ export function useBranding() {
     let mounted = true;
 
     const loadBranding = async () => {
+      const token = localStorage.getItem("auth_token");
+      if (!token) return;
       try {
-        const data = await getBrandingSettings();
+        const data = await getBrandingSettings(token);
         if (mounted) {
           setBranding(data);
         }

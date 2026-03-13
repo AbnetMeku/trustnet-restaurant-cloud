@@ -23,8 +23,10 @@ const getAuthHeader = (token) => ({
   Authorization: `Bearer ${token || localStorage.getItem("auth_token")}`,
 });
 
-export const getBrandingSettings = async () => {
-  const res = await axios.get(BASE_URL);
+export const getBrandingSettings = async (token = null) => {
+  const res = await axios.get(BASE_URL, {
+    headers: getAuthHeader(token),
+  });
   const next = { ...DEFAULT_BRANDING, ...(res.data || {}) };
   localStorage.setItem("business_day_start_time", next.business_day_start_time || "06:00");
   return next;
