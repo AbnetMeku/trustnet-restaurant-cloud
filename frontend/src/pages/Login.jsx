@@ -93,16 +93,8 @@ export default function Login() {
           disabled={submitting}
           className="w-full rounded-lg bg-blue-600/80 py-2 font-semibold text-white transition-colors hover:bg-blue-700/80 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          {submitting ? "Signing In..." : "Login | áŒá‰£"}
+          {submitting ? "Signing In..." : "Login"}
         </button>
-
-        <p className="mt-6 text-center text-xs text-white/70">
-          Super admin access is available at{" "}
-          <a href="/trustadmin" className="font-semibold text-white underline underline-offset-2 hover:text-blue-100">
-            the root portal
-          </a>
-          .
-        </p>
       </form>
     </div>
   );

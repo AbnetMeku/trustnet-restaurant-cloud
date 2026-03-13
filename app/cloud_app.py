@@ -1,7 +1,10 @@
 from flask import Flask, jsonify
+from sqlalchemy.exc import SQLAlchemyError
+from werkzeug.security import generate_password_hash
 
 from .config import Config
 from .extensions import db, jwt, migrate
+from .models import User
 from .routes.admin import admin_bp
 from .routes.auth import auth_bp
 from .routes.compat import compat_bp
@@ -33,4 +36,33 @@ def create_app() -> Flask:
     def root():
         return jsonify({"service": "trustnet-restaurant-cloud", "status": "ok"})
 
+    _seed_super_admin(app)
+
     return app
+
+
+def _seed_super_admin(app: Flask) -> None:
+    if not app.config.get("SUPER_ADMIN_AUTO_CREATE"):
+        return
+    username = app.config.get("SUPER_ADMIN_USERNAME")
+    password = app.config.get("SUPER_ADMIN_PASSWORD")
+    if not username or not password:
+        return
+    try:
+        with app.app_context():
+            if User.query.filter_by(role="super_admin").first():
+                return
+            if User.query.filter_by(username=username).first():
+                app.logger.warning("Super admin username '%s' already exists; skipping seed.", username)
+                return
+            user = User(
+                tenant_id=None,
+                username=username,
+                password_hash=generate_password_hash(password),
+                role="super_admin",
+            )
+            db.session.add(user)
+            db.session.commit()
+            app.logger.info("Seeded super admin account: %s", username)
+    except SQLAlchemyError as exc:
+        app.logger.warning("Unable to seed super admin: %s", exc)

@@ -27,3 +27,11 @@ class Config:
         "yes",
         "on",
     }
+    SUPER_ADMIN_AUTO_CREATE = os.environ.get("SUPER_ADMIN_AUTO_CREATE", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    SUPER_ADMIN_USERNAME = os.environ.get("SUPER_ADMIN_USERNAME")
+    SUPER_ADMIN_PASSWORD = os.environ.get("SUPER_ADMIN_PASSWORD")
