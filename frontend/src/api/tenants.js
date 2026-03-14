@@ -43,3 +43,13 @@ export const deleteTenant = async (tenantId, token = null) => {
   });
   return res.data || {};
 };
+
+export const updateTenantAdmin = async (tenantId, payload, token = null) => {
+  const res = await axios.put(`${BASE_URL}/${tenantId}/tenant-admin`, payload, {
+    headers: {
+      ...getAuthHeader(token),
+      "Content-Type": "application/json",
+    },
+  });
+  return res.data || {};
+};

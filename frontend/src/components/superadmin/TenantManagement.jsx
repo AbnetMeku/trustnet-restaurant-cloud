@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "react-hot-toast";
 
-import { createTenant, updateTenant, deleteTenant } from "@/api/tenants";
+import { createTenant, updateTenant, deleteTenant, updateTenantAdmin } from "@/api/tenants";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -68,7 +68,8 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
     return tenants.filter(
       (tenant) =>
         tenant.name?.toLowerCase().includes(needle) ||
-        tenant.code?.toLowerCase().includes(needle)
+        tenant.code?.toLowerCase().includes(needle) ||
+        tenant.tenant_admin?.username?.toLowerCase().includes(needle)
     );
   }, [tenants, search]);
 
@@ -84,7 +85,7 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
     setForm({
       name: tenant.name || "",
       code: tenant.code || "",
-      admin_username: "",
+      admin_username: tenant.tenant_admin?.username || "",
       admin_password: "",
     });
     setErrors({});
@@ -95,9 +96,9 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
     const nextErrors = {};
     if (!form.name.trim()) nextErrors.name = "Tenant name is required.";
     if (!form.code.trim()) nextErrors.code = "Tenant code is required.";
-    if (!editingTenant) {
-      if (!form.admin_username.trim()) nextErrors.admin_username = "Admin username is required.";
-      if (!form.admin_password.trim()) nextErrors.admin_password = "Admin password is required.";
+    if (!form.admin_username.trim()) nextErrors.admin_username = "Admin username is required.";
+    if (!editingTenant && !form.admin_password.trim()) {
+      nextErrors.admin_password = "Admin password is required.";
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -115,6 +116,23 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
           { name: form.name.trim(), code: form.code.trim() },
           authToken
         );
+
+        const adminUsername = form.admin_username.trim();
+        const shouldUpdateAdmin =
+          adminUsername !== (editingTenant.tenant_admin?.username || "") ||
+          Boolean(form.admin_password.trim());
+
+        if (shouldUpdateAdmin) {
+          await updateTenantAdmin(
+            editingTenant.id,
+            {
+              username: adminUsername,
+              password: form.admin_password || "",
+            },
+            authToken
+          );
+        }
+
         toast.success("Tenant updated.");
       } else {
         const created = await createTenant(
@@ -146,6 +164,13 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const formatDateOnly = (value) => {
+    if (!value) return "-";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleDateString();
   };
 
   const handleDelete = async () => {
@@ -204,29 +229,25 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
                   />
                   {errors.code && <p className="text-xs text-red-500">{errors.code}</p>}
                 </div>
-                {!editingTenant && (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Tenant Admin User</Label>
-                      <Input
-                        value={form.admin_username}
-                        onChange={(event) => setForm({ ...form, admin_username: event.target.value })}
-                        placeholder="admin username"
-                      />
-                      {errors.admin_username && <p className="text-xs text-red-500">{errors.admin_username}</p>}
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Tenant Admin Pass</Label>
-                      <Input
-                        type="password"
-                        value={form.admin_password}
-                        onChange={(event) => setForm({ ...form, admin_password: event.target.value })}
-                        placeholder="admin password"
-                      />
-                      {errors.admin_password && <p className="text-xs text-red-500">{errors.admin_password}</p>}
-                    </div>
-                  </>
-                )}
+                <div className="space-y-2">
+                  <Label>Tenant Admin User</Label>
+                  <Input
+                    value={form.admin_username}
+                    onChange={(event) => setForm({ ...form, admin_username: event.target.value })}
+                    placeholder="admin username"
+                  />
+                  {errors.admin_username && <p className="text-xs text-red-500">{errors.admin_username}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label>{editingTenant ? "Reset Admin Password" : "Tenant Admin Pass"}</Label>
+                  <Input
+                    type="password"
+                    value={form.admin_password}
+                    onChange={(event) => setForm({ ...form, admin_password: event.target.value })}
+                    placeholder={editingTenant ? "leave blank to keep current" : "admin password"}
+                  />
+                  {errors.admin_password && <p className="text-xs text-red-500">{errors.admin_password}</p>}
+                </div>
               </div>
               <DialogFooter className="border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/40">
                 <Button type="button" variant="outline" onClick={() => setModalOpen(false)} disabled={submitting}>
@@ -256,6 +277,7 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
             <tr className="border-b border-slate-200 dark:border-slate-800">
               <th className="px-3 py-2">Tenant</th>
               <th className="px-3 py-2">Code</th>
+              <th className="px-3 py-2">Admin User</th>
               <th className="px-3 py-2">Stores</th>
               <th className="px-3 py-2">Created</th>
               <th className="px-3 py-2 text-right">Actions</th>
@@ -264,7 +286,7 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+                <td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
                   No tenants found.
                 </td>
               </tr>
@@ -273,8 +295,11 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
                 <tr key={tenant.id} className="border-b border-slate-100 dark:border-slate-800">
                   <td className="px-3 py-2 font-medium">{tenant.name}</td>
                   <td className="px-3 py-2">{tenant.code}</td>
+                  <td className="px-3 py-2">
+                    {tenant.tenant_admin?.username || "-"}
+                  </td>
                   <td className="px-3 py-2">{(tenant.stores || []).length}</td>
-                  <td className="px-3 py-2">{tenant.created_at || "-"}</td>
+                  <td className="px-3 py-2">{formatDateOnly(tenant.created_at)}</td>
                   <td className="px-3 py-2">
                     <div className="flex justify-end gap-2">
                       <Button variant="outline" size="sm" onClick={() => openEdit(tenant)}>

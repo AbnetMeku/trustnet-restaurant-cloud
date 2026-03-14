@@ -29,22 +29,36 @@ def _tenant_or_404(tenant_id: int):
 @roles_required("super_admin")
 def list_tenants():
     tenants = Tenant.query.order_by(Tenant.created_at.desc()).all()
-    return jsonify(
-        [
+    payloads = []
+    for tenant in tenants:
+        admin_user = (
+            User.query.filter_by(tenant_id=tenant.id, role="tenant_admin")
+            .order_by(User.created_at.asc())
+            .first()
+        )
+        payloads.append(
             {
                 "id": tenant.id,
                 "name": tenant.name,
                 "code": tenant.code,
                 "is_active": tenant.is_active,
                 "created_at": tenant.created_at.isoformat(),
+                "tenant_admin": (
+                    {
+                        "id": admin_user.id,
+                        "username": admin_user.username,
+                        "created_at": admin_user.created_at.isoformat(),
+                    }
+                    if admin_user
+                    else None
+                ),
                 "stores": [
                     {"id": store.id, "name": store.name, "code": store.code, "is_active": store.is_active}
                     for store in Store.query.filter_by(tenant_id=tenant.id).order_by(Store.created_at.asc()).all()
                 ],
             }
-            for tenant in tenants
-        ]
-    )
+        )
+    return jsonify(payloads)
 
 
 @admin_bp.get("/tenants/<int:tenant_id>/stores")
@@ -149,6 +163,52 @@ def create_user(tenant_id: int):
     db.session.add(user)
     db.session.commit()
     return jsonify({"id": user.id, "username": user.username, "role": user.role}), 201
+
+
+@admin_bp.put("/tenants/<int:tenant_id>/tenant-admin")
+@roles_required("super_admin")
+def update_tenant_admin(tenant_id: int):
+    tenant, error = _tenant_or_404(tenant_id)
+    if error:
+        return error
+
+    payload = request.get_json(silent=True) or {}
+    username = (payload.get("username") or "").strip()
+    password = payload.get("password") or ""
+
+    if not username and not password:
+        return jsonify({"error": "username or password is required"}), 400
+
+    user = (
+        User.query.filter_by(tenant_id=tenant.id, role="tenant_admin")
+        .order_by(User.created_at.asc())
+        .first()
+    )
+
+    if user is None:
+        if not username or not password:
+            return jsonify({"error": "username and password are required to create tenant admin"}), 400
+        if User.query.filter_by(username=username).first():
+            return jsonify({"error": "username already exists"}), 409
+        user = User(
+            tenant_id=tenant.id,
+            username=username,
+            password_hash=generate_password_hash(password),
+            role="tenant_admin",
+        )
+        db.session.add(user)
+        db.session.commit()
+        return jsonify({"id": user.id, "username": user.username, "role": user.role}), 201
+
+    if username and username != user.username:
+        if User.query.filter_by(username=username).first():
+            return jsonify({"error": "username already exists"}), 409
+        user.username = username
+    if password:
+        user.password_hash = generate_password_hash(password)
+
+    db.session.commit()
+    return jsonify({"id": user.id, "username": user.username, "role": user.role}), 200
 
 
 @admin_bp.get("/tenants/<int:tenant_id>/categories")
