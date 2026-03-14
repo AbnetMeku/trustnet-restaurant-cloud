@@ -17,8 +17,13 @@ def create_tenant():
     store_name = (payload.get("store_name") or "").strip()
     store_code = (payload.get("store_code") or "").strip().lower()
 
-    if not name or not code or not store_name or not store_code:
-        return jsonify({"error": "name, code, store_name, and store_code are required"}), 400
+    if not name or not code:
+        return jsonify({"error": "name and code are required"}), 400
+
+    if not store_name:
+        store_name = f"{name} Main Store"
+    if not store_code:
+        store_code = "main"
 
     tenant = Tenant(name=name, code=code)
     try:
@@ -42,3 +47,39 @@ def create_tenant():
         ),
         201,
     )
+
+
+@tenants_bp.put("/tenants/<int:tenant_id>")
+@roles_required("super_admin")
+def update_tenant(tenant_id: int):
+    tenant = Tenant.query.get(tenant_id)
+    if tenant is None:
+        return jsonify({"error": "tenant not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    code = (payload.get("code") or "").strip().lower()
+    if not name or not code:
+        return jsonify({"error": "name and code are required"}), 400
+
+    tenant.name = name
+    tenant.code = code
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": "tenant code already exists"}), 409
+
+    return jsonify({"id": tenant.id, "name": tenant.name, "code": tenant.code}), 200
+
+
+@tenants_bp.delete("/tenants/<int:tenant_id>")
+@roles_required("super_admin")
+def delete_tenant(tenant_id: int):
+    tenant = Tenant.query.get(tenant_id)
+    if tenant is None:
+        return jsonify({"error": "tenant not found"}), 404
+
+    db.session.delete(tenant)
+    db.session.commit()
+    return jsonify({"status": "deleted", "id": tenant_id}), 200

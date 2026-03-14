@@ -7,6 +7,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import InventoryDashboard from "./pages/InventoryDashboard";
 import Login from "./pages/Login";
 import SuperAdminLogin from "./pages/SuperAdminLogin";
+import TenantManagement from "./components/superadmin/TenantManagement";
 
 function ProtectedRoute({ children, roles, redirectTo = "/login" }) {
   const { user } = useAuth();
@@ -23,23 +24,10 @@ function SuperAdminDashboard() {
   const [error, setError] = React.useState("");
   const [message, setMessage] = React.useState("");
   const [activeSection, setActiveSection] = React.useState("tenants");
-  const [tenantTab, setTenantTab] = React.useState("manage");
-  const [tenantForm, setTenantForm] = React.useState({
-    name: "Demo Tenant",
-    code: "demo-tenant",
-    store_name: "Main Branch",
-    store_code: "main",
-  });
-  const [userForm, setUserForm] = React.useState({
-    tenant_id: "",
-    username: "tenantadmin",
-    password: "tenantadmin123",
-    role: "tenant_admin",
-  });
   const [licenseForm, setLicenseForm] = React.useState({
     tenant_id: "",
     store_id: "",
-    license_key: "DEMO-LICENSE-001",
+    license_key: "",
     status: "active",
     expires_at: "",
   });
@@ -68,7 +56,6 @@ function SuperAdminDashboard() {
       setTenants(nextTenants);
       setLicenses(nextLicenses);
       if (nextTenants[0]) {
-        setUserForm((prev) => ({ ...prev, tenant_id: prev.tenant_id || String(nextTenants[0].id) }));
         setLicenseForm((prev) => ({
           ...prev,
           tenant_id: prev.tenant_id || String(nextTenants[0].id),
@@ -110,141 +97,46 @@ function SuperAdminDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <header className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">TrustNet Cloud</p>
-            <h1 className="text-2xl font-semibold">Super Admin</h1>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-sm dark:bg-slate-800">{user?.username}</span>
-            <button className="rounded-lg bg-slate-900 px-4 py-2 text-white dark:bg-slate-100 dark:text-slate-900" onClick={logout}>
-              Logout
+      <div className="admin-shell">
+        <aside className="sidebar rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">TrustNet Cloud</p>
+          <h1 className="sidebar-title text-2xl font-semibold">Super Admin</h1>
+          <div className="sidebar-nav">
+            <button
+              className={`sidebar-link rounded-lg px-3 py-2 text-sm font-semibold ${activeSection === "tenants" ? "active" : ""}`}
+              onClick={() => setActiveSection("tenants")}
+            >
+              Manage Tenants
+            </button>
+            <button
+              className={`sidebar-link rounded-lg px-3 py-2 text-sm font-semibold ${activeSection === "licenses" ? "active" : ""}`}
+              onClick={() => setActiveSection("licenses")}
+            >
+              License Management
             </button>
           </div>
-        </header>
+        </aside>
 
-        {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
-        {message && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">{message}</div>}
-
-        <div className="flex flex-col gap-6 lg:flex-row">
-          <aside className="w-full rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:w-64">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Navigation</p>
-            <div className="space-y-2">
-              <button
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm font-semibold ${activeSection === "tenants" ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "bg-slate-100 text-slate-700 dark:bg-slate-950 dark:text-slate-200"}`}
-                onClick={() => setActiveSection("tenants")}
-              >
-                Manage Tenants
-              </button>
-              <button
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm font-semibold ${activeSection === "licenses" ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "bg-slate-100 text-slate-700 dark:bg-slate-950 dark:text-slate-200"}`}
-                onClick={() => setActiveSection("licenses")}
-              >
-                License Management
+        <div className="admin-content space-y-6">
+          <div className="topbar">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">Overview</p>
+              <h2 className="text-2xl font-semibold">Cloud Control</h2>
+            </div>
+            <div className="topbar-actions">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-sm dark:bg-slate-800">{user?.username}</span>
+              <button className="rounded-lg bg-slate-900 px-4 py-2 text-white dark:bg-slate-100 dark:text-slate-900" onClick={logout}>
+                Logout
               </button>
             </div>
-          </aside>
+          </div>
 
-          <main className="flex-1 space-y-6">
+          {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
+          {message && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">{message}</div>}
+
+          <main className="space-y-6">
             {activeSection === "tenants" && (
-              <>
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    className={`rounded-lg px-4 py-2 text-sm font-semibold ${tenantTab === "manage" ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "border border-slate-200 text-slate-600 dark:border-slate-800 dark:text-slate-300"}`}
-                    onClick={() => setTenantTab("manage")}
-                  >
-                    Create & Admins
-                  </button>
-                  <button
-                    className={`rounded-lg px-4 py-2 text-sm font-semibold ${tenantTab === "directory" ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "border border-slate-200 text-slate-600 dark:border-slate-800 dark:text-slate-300"}`}
-                    onClick={() => setTenantTab("directory")}
-                  >
-                    View Tenants
-                  </button>
-                </div>
-
-                {tenantTab === "manage" && (
-                  <div className="grid gap-6 xl:grid-cols-2">
-                    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                      <h2 className="mb-4 text-lg font-semibold">Create Tenant</h2>
-                      <form
-                        className="grid gap-3"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          submit("/api/tenants", tenantForm, (payload) => `Tenant "${payload.tenant.name}" created.`);
-                        }}
-                      >
-                        <input className="rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950" value={tenantForm.name} onChange={(e) => setTenantForm({ ...tenantForm, name: e.target.value })} placeholder="Tenant name" />
-                        <input className="rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950" value={tenantForm.code} onChange={(e) => setTenantForm({ ...tenantForm, code: e.target.value })} placeholder="Tenant code" />
-                        <input className="rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950" value={tenantForm.store_name} onChange={(e) => setTenantForm({ ...tenantForm, store_name: e.target.value })} placeholder="Store name" />
-                        <input className="rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950" value={tenantForm.store_code} onChange={(e) => setTenantForm({ ...tenantForm, store_code: e.target.value })} placeholder="Store code" />
-                        <button disabled={busy} className="rounded-lg bg-slate-900 px-4 py-2 text-white dark:bg-slate-100 dark:text-slate-900">
-                          Create Tenant
-                        </button>
-                      </form>
-                    </section>
-
-                    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                      <h2 className="mb-4 text-lg font-semibold">Create Tenant Admin</h2>
-                      <form
-                        className="grid gap-3"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          submit(
-                            "/api/auth/tenant-users",
-                            {
-                              tenant_id: Number(userForm.tenant_id),
-                              username: userForm.username,
-                              password: userForm.password,
-                              role: userForm.role,
-                            },
-                            (payload) => `Tenant admin "${payload.username}" created.`
-                          );
-                        }}
-                      >
-                        <select className="rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950" value={userForm.tenant_id} onChange={(e) => setUserForm({ ...userForm, tenant_id: e.target.value })}>
-                          <option value="">Select tenant</option>
-                          {tenants.map((tenant) => (
-                            <option key={tenant.id} value={tenant.id}>
-                              {tenant.name} ({tenant.code})
-                            </option>
-                          ))}
-                        </select>
-                        <input className="rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950" value={userForm.username} onChange={(e) => setUserForm({ ...userForm, username: e.target.value })} placeholder="Username" />
-                        <input className="rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950" type="password" value={userForm.password} onChange={(e) => setUserForm({ ...userForm, password: e.target.value })} placeholder="Password" />
-                        <button disabled={busy} className="rounded-lg bg-slate-900 px-4 py-2 text-white dark:bg-slate-100 dark:text-slate-900">
-                          Create Tenant Admin
-                        </button>
-                      </form>
-                    </section>
-                  </div>
-                )}
-
-                {tenantTab === "directory" && (
-                  <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                    <h2 className="mb-4 text-lg font-semibold">Tenant Directory</h2>
-                    <div className="space-y-3">
-                      {tenants.map((tenant) => (
-                        <div key={tenant.id} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                              <div className="font-medium">{tenant.name}</div>
-                              <div className="text-sm text-slate-500 dark:text-slate-400">{tenant.code}</div>
-                            </div>
-                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-200">
-                              Stores: {(tenant.stores || []).length}
-                            </span>
-                          </div>
-                          <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                            {(tenant.stores || []).map((store) => `${store.name} (${store.code})`).join(", ") || "No stores"}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
-                )}
-              </>
+              <TenantManagement tenants={tenants} authToken={authToken} onRefresh={loadData} />
             )}
 
             {activeSection === "licenses" && (
@@ -315,6 +207,7 @@ function SuperAdminDashboard() {
                             <th className="px-3 py-2">License Key</th>
                             <th className="px-3 py-2">Status</th>
                             <th className="px-3 py-2">Expires</th>
+                            <th className="px-3 py-2">Devices</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -325,6 +218,22 @@ function SuperAdminDashboard() {
                               <td className="px-3 py-2">{license.license_key}</td>
                               <td className="px-3 py-2">{license.status}</td>
                               <td className="px-3 py-2">{license.expires_at || "-"}</td>
+                              <td className="px-3 py-2">
+                                {Array.isArray(license.devices) && license.devices.length > 0 ? (
+                                  <div className="space-y-1 text-xs">
+                                    {license.devices.map((device) => (
+                                      <div key={device.id || device.device_id} className="rounded border border-slate-200 px-2 py-1 dark:border-slate-800">
+                                        <div className="font-semibold">{device.device_name || "Unnamed device"}</div>
+                                        <div>Device ID: {device.device_id}</div>
+                                        <div>Status: {device.status || "unknown"}</div>
+                                        <div>Last seen: {device.last_seen_at || "never"}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-slate-500 dark:text-slate-400">No devices</span>
+                                )}
+                              </td>
                             </tr>
                           ))}
                         </tbody>

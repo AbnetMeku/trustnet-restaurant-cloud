@@ -18,6 +18,24 @@ def list_licenses():
     if tenant_id:
         query = query.filter_by(tenant_id=tenant_id)
     rows = query.order_by(License.created_at.desc()).all()
+    devices_query = Device.query
+    if tenant_id:
+        devices_query = devices_query.filter_by(tenant_id=tenant_id)
+    devices = devices_query.order_by(Device.activated_at.desc().nullslast()).all()
+    devices_by_scope = {}
+    for device in devices:
+        key = (device.tenant_id, device.store_id)
+        devices_by_scope.setdefault(key, []).append(
+            {
+                "id": device.id,
+                "device_id": device.device_id,
+                "device_name": device.device_name,
+                "machine_fingerprint": device.machine_fingerprint,
+                "status": device.status,
+                "activated_at": device.activated_at.isoformat() if device.activated_at else None,
+                "last_seen_at": device.last_seen_at.isoformat() if device.last_seen_at else None,
+            }
+        )
     return jsonify(
         [
             {
@@ -28,6 +46,7 @@ def list_licenses():
                 "status": row.status,
                 "expires_at": row.expires_at.isoformat() if row.expires_at else None,
                 "created_at": row.created_at.isoformat(),
+                "devices": devices_by_scope.get((row.tenant_id, row.store_id), []),
             }
             for row in rows
         ]
