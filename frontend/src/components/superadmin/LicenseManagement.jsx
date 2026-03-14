@@ -31,6 +31,15 @@ const STATUS_STYLES = {
   revoked: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
 };
 
+const isDefaultStore = (store) => {
+  if (!store) return false;
+  const code = (store.code || "").trim().toLowerCase();
+  const name = (store.name || "").trim().toLowerCase();
+  if (code === "main" || code === "default") return true;
+  if (!name) return false;
+  return name === "default store" || name.endsWith("main store");
+};
+
 export default function LicenseManagement({ tenants, licenses, authToken, onRefresh }) {
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -81,7 +90,7 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
 
   const openCreate = () => {
     const firstTenant = tenants[0];
-    const firstStore = firstTenant?.stores?.[0];
+    const firstStore = (firstTenant?.stores || []).find((store) => !isDefaultStore(store));
     setForm({
       tenant_id: firstTenant ? String(firstTenant.id) : "",
       store_id: firstStore ? String(firstStore.id) : "",
@@ -142,7 +151,10 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
   const selectedTenant = tenants.find(
     (tenant) => String(tenant.id) === String(form.tenant_id)
   );
-  const availableStores = selectedTenant?.stores || [];
+  const availableStores = useMemo(
+    () => (selectedTenant?.stores || []).filter((store) => !isDefaultStore(store)),
+    [selectedTenant]
+  );
 
   return (
     <Card className="admin-card p-5 md:p-6 space-y-4">
@@ -175,7 +187,9 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
                     onChange={(event) => {
                       const tenant_id = event.target.value;
                       const firstStore =
-                        tenants.find((tenant) => String(tenant.id) === tenant_id)?.stores?.[0];
+                        tenants
+                          .find((tenant) => String(tenant.id) === tenant_id)
+                          ?.stores?.find((store) => !isDefaultStore(store));
                       setForm({
                         ...form,
                         tenant_id,
@@ -206,6 +220,11 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
                       </option>
                     ))}
                   </select>
+                  {availableStores.length === 0 && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      No eligible stores. Create a store first.
+                    </p>
+                  )}
                   {errors.store_id && <p className="text-xs text-red-500">{errors.store_id}</p>}
                 </div>
                 <div className="space-y-2">
