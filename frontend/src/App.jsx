@@ -9,8 +9,8 @@ import InventoryDashboard from "./pages/InventoryDashboard";
 import Login from "./pages/Login";
 import SuperAdminLogin from "./pages/SuperAdminLogin";
 import TenantManagement from "./components/superadmin/TenantManagement";
+import LicenseManagement from "./components/superadmin/LicenseManagement";
 import { Button } from "./components/ui/button";
-import { Card } from "./components/ui/card";
 
 function ProtectedRoute({ children, roles, redirectTo = "/login" }) {
   const { user } = useAuth();
@@ -23,17 +23,8 @@ function SuperAdminDashboard() {
   const { user, logout, authToken } = useAuth();
   const [tenants, setTenants] = React.useState([]);
   const [licenses, setLicenses] = React.useState([]);
-  const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
-  const [message, setMessage] = React.useState("");
   const [activeSection, setActiveSection] = React.useState("tenants");
-  const [licenseForm, setLicenseForm] = React.useState({
-    tenant_id: "",
-    store_id: "",
-    license_key: "",
-    status: "active",
-    expires_at: "",
-  });
   const [isMobile, setIsMobile] = React.useState(window.innerWidth <= 900);
   const [sidebarOpen, setSidebarOpen] = React.useState(window.innerWidth > 900);
   const [darkMode, setDarkMode] = React.useState(
@@ -63,13 +54,6 @@ function SuperAdminDashboard() {
 
       setTenants(nextTenants);
       setLicenses(nextLicenses);
-      if (nextTenants[0]) {
-        setLicenseForm((prev) => ({
-          ...prev,
-          tenant_id: prev.tenant_id || String(nextTenants[0].id),
-          store_id: prev.store_id || String(nextTenants[0].stores?.[0]?.id || ""),
-        }));
-      }
     } catch (err) {
       setError(err.message);
     }
@@ -106,30 +90,6 @@ function SuperAdminDashboard() {
     setActiveSection(section);
     if (isMobile) setSidebarOpen(false);
   };
-
-  const selectedTenant = tenants.find((tenant) => String(tenant.id) === String(licenseForm.tenant_id));
-  const availableStores = selectedTenant?.stores || [];
-
-  async function submit(path, body, successMessage) {
-    setBusy(true);
-    setError("");
-    setMessage("");
-    try {
-      const response = await fetch(path, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify(body),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || payload.msg || "Request failed");
-      await loadData();
-      setMessage(successMessage(payload));
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <div className={darkMode ? "dark" : ""}>
@@ -232,129 +192,17 @@ function SuperAdminDashboard() {
                 {error}
               </div>
             )}
-            {message && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
-                {message}
-              </div>
-            )}
-
             {activeSection === "tenants" && (
               <TenantManagement tenants={tenants} authToken={authToken} onRefresh={loadData} />
             )}
 
             {activeSection === "licenses" && (
-              <div className="grid gap-6 xl:grid-cols-2">
-                <Card className="admin-card p-5 md:p-6 w-full">
-                  <h2 className="mb-4 text-lg font-semibold">Issue License</h2>
-                  <form
-                    className="grid gap-3"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      submit(
-                        "/api/licenses",
-                        {
-                          tenant_id: Number(licenseForm.tenant_id),
-                          store_id: Number(licenseForm.store_id),
-                          license_key: licenseForm.license_key,
-                          status: licenseForm.status,
-                          expires_at: licenseForm.expires_at || null,
-                        },
-                        (payload) => `License "${payload.license_key}" issued.`
-                      );
-                    }}
-                  >
-                    <select
-                      className="rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-                      value={licenseForm.tenant_id}
-                      onChange={(e) => {
-                        const tenant_id = e.target.value;
-                        setLicenseForm({
-                          ...licenseForm,
-                          tenant_id,
-                          store_id: String(tenants.find((tenant) => String(tenant.id) === tenant_id)?.stores?.[0]?.id || ""),
-                        });
-                      }}
-                    >
-                      <option value="">Select tenant</option>
-                      {tenants.map((tenant) => (
-                        <option key={tenant.id} value={tenant.id}>
-                          {tenant.name} ({tenant.code})
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className="rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-                      value={licenseForm.store_id}
-                      onChange={(e) => setLicenseForm({ ...licenseForm, store_id: e.target.value })}
-                    >
-                      <option value="">Select store</option>
-                      {availableStores.map((store) => (
-                        <option key={store.id} value={store.id}>
-                          {store.name} ({store.code})
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      className="rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-                      value={licenseForm.license_key}
-                      onChange={(e) => setLicenseForm({ ...licenseForm, license_key: e.target.value })}
-                      placeholder="License key"
-                    />
-                    <input
-                      className="rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
-                      type="datetime-local"
-                      value={licenseForm.expires_at}
-                      onChange={(e) => setLicenseForm({ ...licenseForm, expires_at: e.target.value })}
-                    />
-                    <Button disabled={busy}>Issue License</Button>
-                  </form>
-                </Card>
-
-                <Card className="admin-card p-5 md:p-6 w-full">
-                  <h2 className="mb-4 text-lg font-semibold">Issued Licenses</h2>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-slate-200 dark:border-slate-800">
-                          <th className="px-3 py-2">Tenant</th>
-                          <th className="px-3 py-2">Store</th>
-                          <th className="px-3 py-2">License Key</th>
-                          <th className="px-3 py-2">Status</th>
-                          <th className="px-3 py-2">Expires</th>
-                          <th className="px-3 py-2">Devices</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {licenses.map((license) => (
-                          <tr key={license.id || license.license_key} className="border-b border-slate-100 dark:border-slate-800">
-                            <td className="px-3 py-2">{license.tenant_id}</td>
-                            <td className="px-3 py-2">{license.store_id}</td>
-                            <td className="px-3 py-2">{license.license_key}</td>
-                            <td className="px-3 py-2">{license.status}</td>
-                            <td className="px-3 py-2">{license.expires_at || "-"}</td>
-                            <td className="px-3 py-2">
-                              {Array.isArray(license.devices) && license.devices.length > 0 ? (
-                                <div className="space-y-1 text-xs">
-                                  {license.devices.map((device) => (
-                                    <div key={device.id || device.device_id} className="rounded border border-slate-200 px-2 py-1 dark:border-slate-800">
-                                      <div className="font-semibold">{device.device_name || "Unnamed device"}</div>
-                                      <div>Device ID: {device.device_id}</div>
-                                      <div>Status: {device.status || "unknown"}</div>
-                                      <div>Last seen: {device.last_seen_at || "never"}</div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <span className="text-xs text-slate-500 dark:text-slate-400">No devices</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
-              </div>
+              <LicenseManagement
+                tenants={tenants}
+                licenses={licenses}
+                authToken={authToken}
+                onRefresh={loadData}
+              />
             )}
           </main>
         </div>
