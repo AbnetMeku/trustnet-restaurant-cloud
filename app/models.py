@@ -92,6 +92,19 @@ class Device(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
 
 
+class LicensePolicy(db.Model):
+    __tablename__ = "license_policies"
+    __table_args__ = (db.UniqueConstraint("tenant_id", name="uq_license_policy_tenant"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True, index=True)
+    validation_interval_days = db.Column(db.Integer, nullable=False, default=7)
+    grace_period_days = db.Column(db.Integer, nullable=False, default=15)
+    lock_mode = db.Column(db.String(20), nullable=False, default="full")
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
 class Category(db.Model):
     __tablename__ = "categories"
     __table_args__ = (db.UniqueConstraint("tenant_id", "name", name="uq_category_name_per_tenant"),)

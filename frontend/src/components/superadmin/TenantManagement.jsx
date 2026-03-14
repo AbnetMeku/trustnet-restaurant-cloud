@@ -248,6 +248,7 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
                   />
                   {errors.admin_password && <p className="text-xs text-red-500">{errors.admin_password}</p>}
                 </div>
+
               </div>
               <DialogFooter className="border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/40">
                 <Button type="button" variant="outline" onClick={() => setModalOpen(false)} disabled={submitting}>

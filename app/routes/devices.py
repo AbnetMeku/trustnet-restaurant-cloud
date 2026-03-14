@@ -4,6 +4,7 @@ from flask import Blueprint, jsonify, request
 
 from ..extensions import db
 from ..models import Device, License
+from ..policy import effective_policy_payload
 
 devices_bp = Blueprint("devices", __name__)
 
@@ -52,6 +53,8 @@ def activate_device():
 
     db.session.commit()
 
+    policy = effective_policy_payload(tenant_id)
+    grace_days = policy.get("grace_period_days") or 0
     return jsonify(
         {
             "tenant_id": tenant_id,
@@ -60,6 +63,7 @@ def activate_device():
             "license_status": license_row.status,
             "license_expires_at": license_row.expires_at.isoformat() if license_row.expires_at else None,
             "validated_at": now.isoformat(),
-            "grace_until": (now + timedelta(days=7)).isoformat(),
+            "grace_until": (now + timedelta(days=grace_days)).isoformat() if grace_days else None,
+            "policy": policy,
         }
     )

@@ -11,6 +11,7 @@ from .routes.compat import compat_bp
 from .routes.devices import devices_bp
 from .routes.health import health_bp
 from .routes.licenses import licenses_bp
+from .routes.policy import policy_bp
 from .routes.sync import sync_bp
 from .routes.tenants import tenants_bp
 
@@ -30,6 +31,7 @@ def create_app() -> Flask:
     app.register_blueprint(compat_bp, url_prefix="/api")
     app.register_blueprint(devices_bp, url_prefix="/api")
     app.register_blueprint(licenses_bp, url_prefix="/api")
+    app.register_blueprint(policy_bp, url_prefix="/api")
     app.register_blueprint(sync_bp, url_prefix="/api")
 
     @app.get("/")

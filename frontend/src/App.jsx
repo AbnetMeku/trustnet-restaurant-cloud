@@ -1,7 +1,7 @@
 import React from "react";
 import { BrowserRouter as Router, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
-import { FaBars, FaChevronLeft, FaChevronRight, FaKey, FaMoon, FaSun, FaUsers } from "react-icons/fa";
+import { FaBars, FaChevronLeft, FaChevronRight, FaCog, FaKey, FaMoon, FaSun, FaUsers } from "react-icons/fa";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -10,6 +10,7 @@ import Login from "./pages/Login";
 import SuperAdminLogin from "./pages/SuperAdminLogin";
 import TenantManagement from "./components/superadmin/TenantManagement";
 import LicenseManagement from "./components/superadmin/LicenseManagement";
+import Settings from "./components/superadmin/Settings";
 import { Button } from "./components/ui/button";
 
 function ProtectedRoute({ children, roles, redirectTo = "/login" }) {
@@ -148,6 +149,13 @@ function SuperAdminDashboard() {
                 <FaKey className="admin-nav-icon" />
                 {sidebarOpen && <span className="text-sm font-medium tracking-wide">Licenses</span>}
               </button>
+              <button
+                className={`admin-nav-item ${activeSection === "settings" ? "is-active" : ""}`}
+                onClick={() => handleSectionChange("settings")}
+              >
+                <FaCog className="admin-nav-icon" />
+                {sidebarOpen && <span className="text-sm font-medium tracking-wide">Settings</span>}
+              </button>
             </div>
           </nav>
         </aside>
@@ -203,6 +211,10 @@ function SuperAdminDashboard() {
                 authToken={authToken}
                 onRefresh={loadData}
               />
+            )}
+
+            {activeSection === "settings" && (
+              <Settings tenants={tenants} authToken={authToken} />
             )}
           </main>
         </div>

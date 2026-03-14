@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from ..auth import roles_required
 from ..extensions import db
 from ..models import Device, License
+from ..policy import effective_policy_payload
 
 licenses_bp = Blueprint("licenses", __name__)
 
@@ -97,6 +98,7 @@ def validate_license():
             "is_valid": is_valid,
             "validated_at": now.isoformat(),
             "expires_at": license_row.expires_at.isoformat() if license_row.expires_at else None,
+            "policy": effective_policy_payload(tenant_id),
         }
     )
 

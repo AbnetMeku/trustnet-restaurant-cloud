@@ -37,6 +37,8 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [deviceModalOpen, setDeviceModalOpen] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState(null);
 
   const tenantIndex = useMemo(() => {
     const map = new Map();
@@ -89,6 +91,11 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
     });
     setErrors({});
     setModalOpen(true);
+  };
+
+  const openDeviceDetails = (device) => {
+    setSelectedDevice(device);
+    setDeviceModalOpen(true);
   };
 
   const validateForm = () => {
@@ -314,9 +321,11 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
                       {Array.isArray(license.devices) && license.devices.length > 0 ? (
                         <div className="space-y-2 text-xs">
                           {license.devices.map((device) => (
-                            <div
+                            <button
                               key={device.id || device.device_id}
-                              className="rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800"
+                              type="button"
+                              onClick={() => openDeviceDetails(device)}
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-left transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:hover:border-slate-700 dark:hover:bg-slate-800/60"
                             >
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="font-semibold">
@@ -330,22 +339,10 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
                                   {device.status || "unknown"}
                                 </span>
                               </div>
-                              <div className="text-slate-600 dark:text-slate-400">
-                                Device ID: <span className="font-mono">{device.device_id}</span>
-                              </div>
-                              {device.machine_fingerprint && (
-                                <div className="text-slate-600 dark:text-slate-400">
-                                  Fingerprint:{" "}
-                                  <span className="font-mono">{device.machine_fingerprint}</span>
-                                </div>
-                              )}
-                              <div className="text-slate-600 dark:text-slate-400">
+                              <div className="text-xs text-slate-500 dark:text-slate-400">
                                 Last check: {device.last_seen_at || "never"}
                               </div>
-                              <div className="text-slate-600 dark:text-slate-400">
-                                Activated: {device.activated_at || "not activated"}
-                              </div>
-                            </div>
+                            </button>
                           ))}
                         </div>
                       ) : (
@@ -359,6 +356,57 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
           </tbody>
         </table>
       </div>
+
+      <Dialog open={deviceModalOpen} onOpenChange={setDeviceModalOpen}>
+        <DialogContent className="sm:max-w-lg border-slate-200 bg-white p-0 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+          <DialogHeader>
+            <div className="border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/60">
+              <DialogTitle className="text-lg text-slate-900 dark:text-slate-100">
+                Device Details
+              </DialogTitle>
+            </div>
+          </DialogHeader>
+          <div className="space-y-3 px-5 py-4 text-sm">
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Device Name</p>
+              <p className="font-semibold">{selectedDevice?.device_name || "Unnamed device"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Device ID</p>
+              <p className="font-mono text-xs">{selectedDevice?.device_id || "-"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Machine Fingerprint</p>
+              <p className="font-mono text-xs">{selectedDevice?.machine_fingerprint || "-"}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Status</p>
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                    STATUS_STYLES[selectedDevice?.status] || STATUS_STYLES.inactive
+                  }`}
+                >
+                  {selectedDevice?.status || "unknown"}
+                </span>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Activated</p>
+                <p className="text-sm">{selectedDevice?.activated_at || "not activated"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Last Check</p>
+                <p className="text-sm">{selectedDevice?.last_seen_at || "never"}</p>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/40">
+            <Button type="button" variant="outline" onClick={() => setDeviceModalOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
