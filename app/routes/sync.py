@@ -147,11 +147,11 @@ def _upsert_user(tenant_id: int, payload: dict):
     local_id = payload.get("id")
     cloud_id = _resolve_entity_id(tenant_id, "user", local_id)
     row = User.query.get(cloud_id) if cloud_id else None
+    created = False
     if row is None:
         row = User()
         db.session.add(row)
-        db.session.flush()
-        _ensure_mapping(tenant_id, "user", local_id, row.id)
+        created = True
 
     username = (payload.get("username") or "").strip()
     if not username:
@@ -165,17 +165,20 @@ def _upsert_user(tenant_id: int, payload: dict):
     row.waiter_profile_id = mapped_profile_id
     if not row.password_hash:
         row.password_hash = generate_password_hash("change-me")
+    if created:
+        db.session.flush()
+        _ensure_mapping(tenant_id, "user", local_id, row.id)
 
 
 def _upsert_table(tenant_id: int, payload: dict):
     local_id = payload.get("id")
     cloud_id = _resolve_entity_id(tenant_id, "table", local_id)
     row = Table.query.get(cloud_id) if cloud_id else None
+    created = False
     if row is None:
         row = Table()
         db.session.add(row)
-        db.session.flush()
-        _ensure_mapping(tenant_id, "table", local_id, row.id)
+        created = True
 
     row.tenant_id = tenant_id
     row.number = str(payload.get("number") or row.number or "")
@@ -192,33 +195,39 @@ def _upsert_table(tenant_id: int, payload: dict):
                 if user:
                     mapped_waiters.append(user)
         row.waiters = mapped_waiters
+    if created:
+        db.session.flush()
+        _ensure_mapping(tenant_id, "table", local_id, row.id)
 
 
 def _upsert_station(tenant_id: int, payload: dict):
     local_id = payload.get("id")
     cloud_id = _resolve_entity_id(tenant_id, "station", local_id)
     row = Station.query.get(cloud_id) if cloud_id else None
+    created = False
     if row is None:
         row = Station()
         db.session.add(row)
-        db.session.flush()
-        _ensure_mapping(tenant_id, "station", local_id, row.id)
+        created = True
 
     row.tenant_id = tenant_id
     row.name = (payload.get("name") or row.name or "").strip()
     row.print_mode = (payload.get("print_mode") or row.print_mode or "grouped").strip()
     row.cashier_printer = bool(payload.get("cashier_printer", False))
+    if created:
+        db.session.flush()
+        _ensure_mapping(tenant_id, "station", local_id, row.id)
 
 
 def _upsert_waiter_profile(tenant_id: int, payload: dict):
     local_id = payload.get("id")
     cloud_id = _resolve_entity_id(tenant_id, "waiter_profile", local_id)
     row = WaiterProfile.query.get(cloud_id) if cloud_id else None
+    created = False
     if row is None:
         row = WaiterProfile()
         db.session.add(row)
-        db.session.flush()
-        _ensure_mapping(tenant_id, "waiter_profile", local_id, row.id)
+        created = True
 
     row.tenant_id = tenant_id
     row.name = (payload.get("name") or row.name or "").strip()
@@ -235,48 +244,57 @@ def _upsert_waiter_profile(tenant_id: int, payload: dict):
                 if station:
                     mapped_stations.append(station)
         row.stations = mapped_stations
+    if created:
+        db.session.flush()
+        _ensure_mapping(tenant_id, "waiter_profile", local_id, row.id)
 
 
 def _upsert_category(tenant_id: int, payload: dict):
     local_id = payload.get("id")
     cloud_id = _resolve_entity_id(tenant_id, "category", local_id)
     row = Category.query.get(cloud_id) if cloud_id else None
+    created = False
     if row is None:
         row = Category()
         db.session.add(row)
-        db.session.flush()
-        _ensure_mapping(tenant_id, "category", local_id, row.id)
+        created = True
 
     row.tenant_id = tenant_id
     row.name = (payload.get("name") or row.name or "").strip()
     row.quantity_step = payload.get("quantity_step", row.quantity_step or 1.0)
+    if created:
+        db.session.flush()
+        _ensure_mapping(tenant_id, "category", local_id, row.id)
 
 
 def _upsert_subcategory(tenant_id: int, payload: dict):
     local_id = payload.get("id")
     cloud_id = _resolve_entity_id(tenant_id, "subcategory", local_id)
     row = SubCategory.query.get(cloud_id) if cloud_id else None
+    created = False
     if row is None:
         row = SubCategory()
         db.session.add(row)
-        db.session.flush()
-        _ensure_mapping(tenant_id, "subcategory", local_id, row.id)
+        created = True
 
     row.tenant_id = tenant_id
     row.name = (payload.get("name") or row.name or "").strip()
     category_local_id = payload.get("category_id")
     row.category_id = _resolve_entity_id(tenant_id, "category", category_local_id)
+    if created:
+        db.session.flush()
+        _ensure_mapping(tenant_id, "subcategory", local_id, row.id)
 
 
 def _upsert_menu_item(tenant_id: int, payload: dict):
     local_id = payload.get("id")
     cloud_id = _resolve_entity_id(tenant_id, "menu_item", local_id)
     row = MenuItem.query.get(cloud_id) if cloud_id else None
+    created = False
     if row is None:
         row = MenuItem()
         db.session.add(row)
-        db.session.flush()
-        _ensure_mapping(tenant_id, "menu_item", local_id, row.id)
+        created = True
 
     row.tenant_id = tenant_id
     row.name = (payload.get("name") or row.name or "").strip()
@@ -288,6 +306,9 @@ def _upsert_menu_item(tenant_id: int, payload: dict):
     row.image_url = payload.get("image_url") or row.image_url
     row.station_id = _resolve_entity_id(tenant_id, "station", payload.get("station_id"))
     row.subcategory_id = _resolve_entity_id(tenant_id, "subcategory", payload.get("subcategory_id"))
+    if created:
+        db.session.flush()
+        _ensure_mapping(tenant_id, "menu_item", local_id, row.id)
 
 
 def _upsert_branding(tenant_id: int, payload: dict):
@@ -305,11 +326,11 @@ def _upsert_inventory_item(tenant_id: int, payload: dict):
     local_id = payload.get("id")
     cloud_id = _resolve_entity_id(tenant_id, "inventory_item", local_id)
     row = InventoryItem.query.get(cloud_id) if cloud_id else None
+    created = False
     if row is None:
         row = InventoryItem()
         db.session.add(row)
-        db.session.flush()
-        _ensure_mapping(tenant_id, "inventory_item", local_id, row.id)
+        created = True
 
     row.tenant_id = tenant_id
     row.name = (payload.get("name") or row.name or "").strip()
@@ -319,6 +340,9 @@ def _upsert_inventory_item(tenant_id: int, payload: dict):
     row.container_size_ml = payload.get("container_size_ml", row.container_size_ml)
     row.default_shot_ml = payload.get("default_shot_ml", row.default_shot_ml)
     row.is_active = bool(payload.get("is_active", True))
+    if created:
+        db.session.flush()
+        _ensure_mapping(tenant_id, "inventory_item", local_id, row.id)
 
 
 def _upsert_inventory_menu_link(tenant_id: int, payload: dict):
@@ -370,11 +394,11 @@ def _upsert_stock_purchase(tenant_id: int, payload: dict):
     local_id = payload.get("id")
     cloud_id = _resolve_entity_id(tenant_id, "stock_purchase", local_id)
     row = StockPurchase.query.get(cloud_id) if cloud_id else None
+    created = False
     if row is None:
         row = StockPurchase()
         db.session.add(row)
-        db.session.flush()
-        _ensure_mapping(tenant_id, "stock_purchase", local_id, row.id)
+        created = True
     row.tenant_id = tenant_id
     row.inventory_item_id = _resolve_entity_id(tenant_id, "inventory_item", payload.get("inventory_item_id"))
     row.quantity = payload.get("quantity", row.quantity or 0.0)
@@ -383,17 +407,20 @@ def _upsert_stock_purchase(tenant_id: int, payload: dict):
     created_at = _parse_datetime(payload.get("created_at"))
     if created_at:
         row.created_at = created_at
+    if created:
+        db.session.flush()
+        _ensure_mapping(tenant_id, "stock_purchase", local_id, row.id)
 
 
 def _upsert_stock_transfer(tenant_id: int, payload: dict):
     local_id = payload.get("id")
     cloud_id = _resolve_entity_id(tenant_id, "stock_transfer", local_id)
     row = StockTransfer.query.get(cloud_id) if cloud_id else None
+    created = False
     if row is None:
         row = StockTransfer()
         db.session.add(row)
-        db.session.flush()
-        _ensure_mapping(tenant_id, "stock_transfer", local_id, row.id)
+        created = True
     row.tenant_id = tenant_id
     row.inventory_item_id = _resolve_entity_id(tenant_id, "inventory_item", payload.get("inventory_item_id"))
     row.station_id = _resolve_entity_id(tenant_id, "station", payload.get("station_id"))
@@ -402,6 +429,9 @@ def _upsert_stock_transfer(tenant_id: int, payload: dict):
     created_at = _parse_datetime(payload.get("created_at"))
     if created_at:
         row.created_at = created_at
+    if created:
+        db.session.flush()
+        _ensure_mapping(tenant_id, "stock_transfer", local_id, row.id)
 
 
 def _upsert_station_stock_snapshot(tenant_id: int, payload: dict):
