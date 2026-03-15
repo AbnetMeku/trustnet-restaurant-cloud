@@ -52,6 +52,15 @@ const EMPTY_FORM = {
   admin_password: "",
 };
 
+const getMainStore = (stores) => {
+  const rows = stores || [];
+  if (!rows.length) return null;
+  const byCode = rows.find((store) => (store.code || "").trim().toLowerCase() === "main");
+  if (byCode) return byCode;
+  const byName = rows.find((store) => (store.name || "").trim().toLowerCase().endsWith("main store"));
+  return byName || rows[0];
+};
+
 export default function TenantManagement({ tenants, authToken, onRefresh }) {
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
@@ -280,6 +289,7 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
               <th className="px-3 py-2">Code</th>
               <th className="px-3 py-2">Admin User</th>
               <th className="px-3 py-2">Stores</th>
+              <th className="px-3 py-2">IDs</th>
               <th className="px-3 py-2">Created</th>
               <th className="px-3 py-2 text-right">Actions</th>
             </tr>
@@ -287,32 +297,39 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+                <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
                   No tenants found.
                 </td>
               </tr>
             ) : (
-              filtered.map((tenant) => (
-                <tr key={tenant.id} className="border-b border-slate-100 dark:border-slate-800">
-                  <td className="px-3 py-2 font-medium">{tenant.name}</td>
-                  <td className="px-3 py-2">{tenant.code}</td>
-                  <td className="px-3 py-2">
-                    {tenant.tenant_admin?.username || "-"}
-                  </td>
-                  <td className="px-3 py-2">{(tenant.stores || []).length}</td>
-                  <td className="px-3 py-2">{formatDateOnly(tenant.created_at)}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => openEdit(tenant)}>
-                        Edit
-                      </Button>
-                      <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(tenant)}>
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              filtered.map((tenant) => {
+                const mainStore = getMainStore(tenant.stores);
+                return (
+                  <tr key={tenant.id} className="border-b border-slate-100 dark:border-slate-800">
+                    <td className="px-3 py-2 font-medium">{tenant.name}</td>
+                    <td className="px-3 py-2">{tenant.code}</td>
+                    <td className="px-3 py-2">
+                      {tenant.tenant_admin?.username || "-"}
+                    </td>
+                    <td className="px-3 py-2">{(tenant.stores || []).length}</td>
+                    <td className="px-3 py-2 text-xs text-slate-600 dark:text-slate-400">
+                      <div>Tenant ID: {tenant.id}</div>
+                      <div>Main Store ID: {mainStore?.id || "-"}</div>
+                    </td>
+                    <td className="px-3 py-2">{formatDateOnly(tenant.created_at)}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openEdit(tenant)}>
+                          Edit
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(tenant)}>
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
