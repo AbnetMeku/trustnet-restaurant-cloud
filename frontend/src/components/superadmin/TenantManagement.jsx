@@ -45,6 +45,39 @@ function ConfirmDialog({ open, title, description, onConfirm, onCancel, loading 
   );
 }
 
+function ResetSyncDialog({ open, tenantName, storeLabel, onConfirm, onCancel, loading }) {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !loading && !next && onCancel()}>
+      <DialogContent className="sm:max-w-md border-slate-200 bg-white p-0 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+        <DialogHeader>
+          <div className="border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/60">
+            <DialogTitle className="text-lg text-slate-900 dark:text-slate-100">
+              Reset cloud sync data?
+            </DialogTitle>
+          </div>
+        </DialogHeader>
+        <div className="space-y-3 px-5 py-4">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            This will delete all cloud data for tenant <strong>{tenantName}</strong>
+            {storeLabel ? ` (store ${storeLabel})` : ""}. The next device sync will re-upload a full snapshot.
+          </p>
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+            This action is permanent and cannot be undone.
+          </p>
+        </div>
+        <DialogFooter className="border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/40">
+          <Button variant="outline" className="border-slate-300 dark:border-slate-700" onClick={onCancel} disabled={loading}>
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={onConfirm} disabled={loading}>
+            {loading ? "Resetting..." : "Reset Cloud Data"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 const EMPTY_FORM = {
   name: "",
   code: "",
@@ -70,6 +103,8 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
   const [errors, setErrors] = useState({});
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [resetTarget, setResetTarget] = useState(null);
+  const [resetting, setResetting] = useState(false);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -194,6 +229,39 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
       toast.error(getApiErrorMessage(error, "Failed to delete tenant."));
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleResetSync = async () => {
+    if (!resetTarget) return;
+    const mainStore = getMainStore(resetTarget.stores);
+    if (!mainStore?.id) {
+      toast.error("Main store is missing for this tenant.");
+      return;
+    }
+    setResetting(true);
+    try {
+      const response = await axios.post(
+        "/api/sync/reset",
+        {
+          tenant_id: resetTarget.id,
+          store_id: mainStore.id,
+          confirm: true,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${authToken || localStorage.getItem("auth_token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      if (response.status >= 400) throw new Error("Reset failed.");
+      toast.success("Cloud data reset. Next sync will re-upload full snapshot.");
+      setResetTarget(null);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Failed to reset cloud data."));
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -322,6 +390,9 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
                         <Button variant="outline" size="sm" onClick={() => openEdit(tenant)}>
                           Edit
                         </Button>
+                        <Button variant="outline" size="sm" onClick={() => setResetTarget(tenant)} disabled={!mainStore?.id}>
+                          Reset Sync
+                        </Button>
                         <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(tenant)}>
                           Delete
                         </Button>
@@ -342,6 +413,15 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
         loading={deleting}
+      />
+
+      <ResetSyncDialog
+        open={Boolean(resetTarget)}
+        tenantName={resetTarget?.name || "this tenant"}
+        storeLabel={getMainStore(resetTarget?.stores)?.id ? `ID ${getMainStore(resetTarget?.stores)?.id}` : ""}
+        onConfirm={handleResetSync}
+        onCancel={() => setResetTarget(null)}
+        loading={resetting}
       />
     </Card>
   );

@@ -2,8 +2,10 @@ from datetime import datetime
 from decimal import Decimal
 
 from flask import Blueprint, jsonify, request
+from flask_jwt_extended import get_jwt, verify_jwt_in_request
 from werkzeug.security import generate_password_hash
 
+from ..auth import extract_roles_from_claims
 from ..extensions import db
 from ..models import (
     BrandingSettings,
@@ -516,18 +518,36 @@ def reset_sync_data():
     tenant_id = payload.get("tenant_id")
     store_id = payload.get("store_id")
     device_id = (payload.get("device_id") or "").strip()
+    confirm = payload.get("confirm")
 
-    if not tenant_id or not store_id or not device_id:
-        return jsonify({"error": "tenant_id, store_id, and device_id are required"}), 400
+    if not tenant_id:
+        return jsonify({"error": "tenant_id is required"}), 400
+    if confirm is not True:
+        return jsonify({"error": "confirm is required"}), 400
 
-    device = Device.query.filter_by(
-        tenant_id=tenant_id,
-        store_id=store_id,
-        device_id=device_id,
-        status="active",
-    ).first()
-    if device is None:
-        return jsonify({"error": "device is not active"}), 403
+    is_super_admin = False
+    try:
+        verify_jwt_in_request(optional=True)
+        claims = get_jwt()
+        if claims:
+            roles = extract_roles_from_claims(claims)
+            if "super_admin" in roles:
+                is_super_admin = True
+    except Exception:
+        is_super_admin = False
+
+    if not is_super_admin:
+        if not store_id or not device_id:
+            return jsonify({"error": "tenant_id, store_id, and device_id are required"}), 400
+
+        device = Device.query.filter_by(
+            tenant_id=tenant_id,
+            store_id=store_id,
+            device_id=device_id,
+            status="active",
+        ).first()
+        if device is None:
+            return jsonify({"error": "device is not active"}), 403
 
     _reset_tenant_data(tenant_id)
     db.session.commit()
