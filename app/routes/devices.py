@@ -30,6 +30,14 @@ def activate_device():
     if license_row is None or license_row.status not in {"active", "trial"}:
         return jsonify({"error": "license is invalid for this tenant/store"}), 403
 
+    existing_active = Device.query.filter_by(
+        tenant_id=tenant_id,
+        store_id=store_id,
+        status="active",
+    ).first()
+    if existing_active and existing_active.device_id != device_id:
+        return jsonify({"error": "license already in use on another device"}), 409
+
     device = Device.query.filter_by(device_id=device_id).first()
     now = datetime.now(timezone.utc)
     if device is None:

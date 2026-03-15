@@ -31,13 +31,33 @@ const STATUS_STYLES = {
   revoked: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200",
 };
 
-const isDefaultStore = (store) => {
-  if (!store) return false;
-  const code = (store.code || "").trim().toLowerCase();
-  const name = (store.name || "").trim().toLowerCase();
-  if (code === "main" || code === "default") return true;
-  if (!name) return false;
-  return name === "default store" || name.endsWith("main store");
+const LICENSE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+const generateLicenseKey = () => {
+  const length = 25;
+  const bytes = new Uint8Array(length);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  const chars = Array.from(bytes, (byte) => LICENSE_ALPHABET[byte % LICENSE_ALPHABET.length]);
+  const groups = [];
+  for (let i = 0; i < chars.length; i += 5) {
+    groups.push(chars.slice(i, i + 5).join(""));
+  }
+  return `TN-${groups.join("-")}`;
+};
+
+const getMainStore = (stores) => {
+  const rows = stores || [];
+  if (!rows.length) return null;
+  const byCode = rows.find((store) => (store.code || "").trim().toLowerCase() === "main");
+  if (byCode) return byCode;
+  const byName = rows.find((store) => (store.name || "").trim().toLowerCase().endsWith("main store"));
+  return byName || rows[0];
 };
 
 export default function LicenseManagement({ tenants, licenses, authToken, onRefresh }) {
@@ -90,7 +110,7 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
 
   const openCreate = () => {
     const firstTenant = tenants[0];
-    const firstStore = (firstTenant?.stores || []).find((store) => !isDefaultStore(store));
+    const firstStore = getMainStore(firstTenant?.stores);
     setForm({
       tenant_id: firstTenant ? String(firstTenant.id) : "",
       store_id: firstStore ? String(firstStore.id) : "",
@@ -151,10 +171,10 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
   const selectedTenant = tenants.find(
     (tenant) => String(tenant.id) === String(form.tenant_id)
   );
-  const availableStores = useMemo(
-    () => (selectedTenant?.stores || []).filter((store) => !isDefaultStore(store)),
-    [selectedTenant]
-  );
+  const availableStores = useMemo(() => {
+    const mainStore = getMainStore(selectedTenant?.stores);
+    return mainStore ? [mainStore] : [];
+  }, [selectedTenant]);
 
   return (
     <Card className="admin-card p-5 md:p-6 space-y-4">
@@ -186,10 +206,9 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
                     value={form.tenant_id}
                     onChange={(event) => {
                       const tenant_id = event.target.value;
-                      const firstStore =
-                        tenants
-                          .find((tenant) => String(tenant.id) === tenant_id)
-                          ?.stores?.find((store) => !isDefaultStore(store));
+                      const firstStore = getMainStore(
+                        tenants.find((tenant) => String(tenant.id) === tenant_id)?.stores
+                      );
                       setForm({
                         ...form,
                         tenant_id,
@@ -212,6 +231,7 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
                     value={form.store_id}
                     onChange={(event) => setForm({ ...form, store_id: event.target.value })}
+                    disabled
                   >
                     <option value="">Select store</option>
                     {availableStores.map((store) => (
@@ -222,13 +242,23 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
                   </select>
                   {availableStores.length === 0 && (
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      No eligible stores. Create a store first.
+                      Main store not found.
                     </p>
                   )}
                   {errors.store_id && <p className="text-xs text-red-500">{errors.store_id}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label>License Key</Label>
+                  <div className="flex items-center justify-between gap-3">
+                    <Label>License Key</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setForm({ ...form, license_key: generateLicenseKey() })}
+                    >
+                      Generate
+                    </Button>
+                  </div>
                   <Input
                     value={form.license_key}
                     onChange={(event) => setForm({ ...form, license_key: event.target.value })}
