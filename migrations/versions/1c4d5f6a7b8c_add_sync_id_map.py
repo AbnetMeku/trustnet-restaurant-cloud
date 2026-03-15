@@ -17,6 +17,14 @@ depends_on = None
 
 
 def upgrade():
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if inspector.has_table("sync_id_map"):
+        return
+
+    # Handle leftover composite type from a failed create on Postgres.
+    op.execute("DROP TYPE IF EXISTS sync_id_map")
+
     op.create_table(
         "sync_id_map",
         sa.Column("id", sa.Integer(), nullable=False),
