@@ -241,6 +241,20 @@ class SyncEvent(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
 
 
+class SyncIdMap(db.Model):
+    __tablename__ = "sync_id_map"
+    __table_args__ = (
+        db.UniqueConstraint("tenant_id", "entity_type", "local_id", name="uq_sync_id_map"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    entity_type = db.Column(db.String(64), nullable=False)
+    local_id = db.Column(db.String(64), nullable=False)
+    cloud_id = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+
+
 class InventoryItem(db.Model):
     __tablename__ = "inventory_items"
     __table_args__ = (
