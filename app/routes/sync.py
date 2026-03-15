@@ -25,6 +25,7 @@ from ..models import (
     SyncIdMap,
     Table,
     User,
+    WaiterProfile,
 )
 
 sync_bp = Blueprint("sync", __name__)
@@ -33,6 +34,7 @@ SYNCED_ENTITY_TYPES = {
     "user",
     "table",
     "station",
+    "waiter_profile",
     "category",
     "subcategory",
     "menu_item",
@@ -127,6 +129,9 @@ def _upsert_user(tenant_id: int, payload: dict):
     row.role = (payload.get("role") or "waiter").strip()
     row.tenant_id = tenant_id
     row.is_active = True
+    waiter_profile_id = payload.get("waiter_profile_id")
+    mapped_profile_id = _resolve_entity_id(tenant_id, "waiter_profile", waiter_profile_id)
+    row.waiter_profile_id = mapped_profile_id
     if not row.password_hash:
         row.password_hash = generate_password_hash("change-me")
 
@@ -172,6 +177,33 @@ def _upsert_station(tenant_id: int, payload: dict):
     row.name = (payload.get("name") or row.name or "").strip()
     row.print_mode = (payload.get("print_mode") or row.print_mode or "grouped").strip()
     row.cashier_printer = bool(payload.get("cashier_printer", False))
+
+
+def _upsert_waiter_profile(tenant_id: int, payload: dict):
+    local_id = payload.get("id")
+    cloud_id = _resolve_entity_id(tenant_id, "waiter_profile", local_id)
+    row = WaiterProfile.query.get(cloud_id) if cloud_id else None
+    if row is None:
+        row = WaiterProfile()
+        db.session.add(row)
+        db.session.flush()
+        _ensure_mapping(tenant_id, "waiter_profile", local_id, row.id)
+
+    row.tenant_id = tenant_id
+    row.name = (payload.get("name") or row.name or "").strip()
+    row.max_tables = payload.get("max_tables", row.max_tables or 5)
+    row.allow_vip = bool(payload.get("allow_vip", row.allow_vip if row.allow_vip is not None else True))
+
+    station_ids = payload.get("station_ids") or []
+    if isinstance(station_ids, list):
+        mapped_stations = []
+        for station_id in station_ids:
+            mapped_id = _resolve_entity_id(tenant_id, "station", station_id)
+            if mapped_id:
+                station = Station.query.get(mapped_id)
+                if station:
+                    mapped_stations.append(station)
+        row.stations = mapped_stations
 
 
 def _upsert_category(tenant_id: int, payload: dict):
@@ -409,6 +441,8 @@ def _apply_sync_event(tenant_id: int, store_id: int, entity_type: str, payload: 
         _upsert_table(tenant_id, payload)
     elif entity_type == "station":
         _upsert_station(tenant_id, payload)
+    elif entity_type == "waiter_profile":
+        _upsert_waiter_profile(tenant_id, payload)
     elif entity_type == "category":
         _upsert_category(tenant_id, payload)
     elif entity_type == "subcategory":
