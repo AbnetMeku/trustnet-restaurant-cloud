@@ -723,6 +723,7 @@ def pull_sync_batch():
                     "entity_id": row.entity_id,
                     "operation": row.operation,
                     "payload": row.payload,
+                    "device_id": row.device_id,
                     "created_at": row.created_at.isoformat(),
                 }
                 for row in rows

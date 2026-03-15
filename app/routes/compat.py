@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -21,9 +22,11 @@ from ..models import (
     StationStockSnapshot,
     StockPurchase,
     StockTransfer,
+    Store,
     StoreStock,
     StoreStockSnapshot,
     SubCategory,
+    SyncEvent,
     Table,
     User,
     WaiterProfile,
@@ -72,6 +75,207 @@ def _branding_for(tenant_id: int) -> BrandingSettings:
     if not row.background_url:
         row.background_url = "/Background.png"
     return row
+
+
+def _default_store_id(tenant_id: int) -> int | None:
+    store = Store.query.filter_by(tenant_id=tenant_id, code="main").first()
+    if store is None:
+        store = Store.query.filter_by(tenant_id=tenant_id).order_by(Store.id.asc()).first()
+    return store.id if store else None
+
+
+def _sync_event_id(entity_type: str, entity_id: int | str | None) -> str:
+    suffix = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    return f"{entity_type}-{entity_id}-{suffix}"
+
+
+def _emit_sync_event(
+    tenant_id: int,
+    entity_type: str,
+    entity_id: int | str | None,
+    operation: str,
+    payload: dict,
+    store_id: int | None = None,
+    device_id: str = "cloud",
+):
+    store_id = store_id or _default_store_id(tenant_id)
+    if store_id is None:
+        return
+    db.session.add(
+        SyncEvent(
+            tenant_id=tenant_id,
+            store_id=store_id,
+            device_id=device_id,
+            event_id=_sync_event_id(entity_type, entity_id),
+            entity_type=entity_type,
+            entity_id=str(entity_id or ""),
+            operation=operation,
+            payload=payload,
+        )
+    )
+
+
+def _sync_payload_user(row: User):
+    return {
+        "id": row.id,
+        "username": row.username,
+        "role": "admin" if row.role == "tenant_admin" else row.role,
+        "waiter_profile_id": row.waiter_profile_id,
+    }
+
+
+def _sync_payload_table(row: Table):
+    return {
+        "id": row.id,
+        "number": row.number,
+        "status": row.status,
+        "is_vip": row.is_vip,
+        "waiter_ids": [user.id for user in row.waiters],
+    }
+
+
+def _sync_payload_station(row: Station):
+    return {
+        "id": row.id,
+        "name": row.name,
+        "printer_identifier": row.printer_identifier,
+        "print_mode": row.print_mode or "grouped",
+        "cashier_printer": row.cashier_printer,
+    }
+
+
+def _sync_payload_waiter_profile(row: WaiterProfile):
+    return {
+        "id": row.id,
+        "name": row.name,
+        "max_tables": row.max_tables,
+        "allow_vip": row.allow_vip,
+        "station_ids": [station.id for station in (row.stations or [])],
+    }
+
+
+def _sync_payload_category(row: Category):
+    return {
+        "id": row.id,
+        "name": row.name,
+        "quantity_step": float(row.quantity_step or 1),
+    }
+
+
+def _sync_payload_subcategory(row: SubCategory):
+    return {
+        "id": row.id,
+        "name": row.name,
+        "category_id": row.category_id,
+    }
+
+
+def _sync_payload_menu_item(row: MenuItem):
+    return {
+        "id": row.id,
+        "name": row.name,
+        "description": row.description,
+        "price": float(row.price) if row.price is not None else None,
+        "vip_price": float(row.vip_price) if row.vip_price is not None else None,
+        "quantity_step": float(row.quantity_step) if row.quantity_step is not None else None,
+        "is_available": row.is_available,
+        "station_id": row.station_id,
+        "subcategory_id": row.subcategory_id,
+        "image_url": row.image_url,
+    }
+
+
+def _sync_payload_branding(row: BrandingSettings):
+    return {
+        "business_day_start_time": row.business_day_start_time,
+        "print_preview_enabled": row.print_preview_enabled,
+        "kds_mark_unavailable_enabled": row.kds_mark_unavailable_enabled,
+    }
+
+
+def _sync_payload_inventory_item(row: InventoryItem):
+    return {
+        "id": row.id,
+        "name": row.name,
+        "unit": row.unit,
+        "serving_unit": row.serving_unit,
+        "servings_per_unit": row.servings_per_unit,
+        "container_size_ml": row.container_size_ml,
+        "default_shot_ml": row.default_shot_ml,
+        "is_active": row.is_active,
+    }
+
+
+def _sync_payload_inventory_menu_link(row: InventoryMenuLink):
+    return {
+        "id": row.id,
+        "inventory_item_id": row.inventory_item_id,
+        "menu_item_id": row.menu_item_id,
+        "deduction_ratio": row.deduction_ratio,
+        "serving_type": row.serving_type,
+        "serving_value": row.serving_value,
+    }
+
+
+def _sync_payload_store_stock(row: StoreStock):
+    return {
+        "inventory_item_id": row.inventory_item_id,
+        "quantity": row.quantity,
+    }
+
+
+def _sync_payload_station_stock(row: StationStock):
+    return {
+        "station_id": row.station_id,
+        "inventory_item_id": row.inventory_item_id,
+        "quantity": row.quantity,
+    }
+
+
+def _sync_payload_stock_purchase(row: StockPurchase):
+    return {
+        "id": row.id,
+        "inventory_item_id": row.inventory_item_id,
+        "quantity": row.quantity,
+        "unit_price": row.unit_price,
+        "status": row.status,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def _sync_payload_stock_transfer(row: StockTransfer):
+    return {
+        "id": row.id,
+        "inventory_item_id": row.inventory_item_id,
+        "station_id": row.station_id,
+        "quantity": row.quantity,
+        "status": row.status,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def _sync_payload_station_stock_snapshot(row: StationStockSnapshot):
+    return {
+        "station_id": row.station_id,
+        "inventory_item_id": row.inventory_item_id,
+        "snapshot_date": row.snapshot_date.isoformat() if row.snapshot_date else None,
+        "start_of_day_quantity": row.start_of_day_quantity,
+        "added_quantity": row.added_quantity,
+        "sold_quantity": row.sold_quantity,
+        "void_quantity": row.void_quantity,
+        "remaining_quantity": row.remaining_quantity,
+    }
+
+
+def _sync_payload_store_stock_snapshot(row: StoreStockSnapshot):
+    return {
+        "inventory_item_id": row.inventory_item_id,
+        "snapshot_date": row.snapshot_date.isoformat() if row.snapshot_date else None,
+        "opening_quantity": row.opening_quantity,
+        "purchased_quantity": row.purchased_quantity,
+        "transferred_out_quantity": row.transferred_out_quantity,
+        "closing_quantity": row.closing_quantity,
+    }
 
 
 def _user_payload(row: User):
@@ -166,6 +370,8 @@ def update_branding():
     row.kitchen_tag_category_id = payload.get("kitchen_tag_category_id")
     row.kitchen_tag_subcategory_id = payload.get("kitchen_tag_subcategory_id")
     row.kitchen_tag_subcategory_ids = payload.get("kitchen_tag_subcategory_ids") or []
+    db.session.flush()
+    _emit_sync_event(tenant_id, "branding", row.id, "upsert", _sync_payload_branding(row))
     db.session.commit()
     return get_branding()
 
@@ -233,6 +439,8 @@ def create_user_flat():
     )
     try:
         db.session.add(row)
+        db.session.flush()
+        _emit_sync_event(tenant_id, "user", row.id, "upsert", _sync_payload_user(row))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -262,6 +470,8 @@ def update_user_flat(user_id: int):
     if "waiter_profile_id" in payload:
         row.waiter_profile_id = payload.get("waiter_profile_id")
     try:
+        db.session.flush()
+        _emit_sync_event(tenant_id, "user", row.id, "upsert", _sync_payload_user(row))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -276,7 +486,9 @@ def delete_user_flat(user_id: int):
     if error:
         return error
     row = User.query.filter_by(id=user_id, tenant_id=tenant_id).first_or_404()
+    user_id_value = row.id
     db.session.delete(row)
+    _emit_sync_event(tenant_id, "user", user_id_value, "delete", {"id": user_id_value})
     db.session.commit()
     return jsonify({"success": True})
 
@@ -340,6 +552,8 @@ def create_waiter_profile():
     row.stations = Station.query.filter(Station.tenant_id == tenant_id, Station.id.in_(station_ids)).all() if station_ids else []
     try:
         db.session.add(row)
+        db.session.flush()
+        _emit_sync_event(tenant_id, "waiter_profile", row.id, "upsert", _sync_payload_waiter_profile(row))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -364,6 +578,8 @@ def update_waiter_profile(profile_id: int):
     if "station_ids" in payload:
         row.stations = Station.query.filter(Station.tenant_id == tenant_id, Station.id.in_(payload.get("station_ids") or [])).all()
     try:
+        db.session.flush()
+        _emit_sync_event(tenant_id, "waiter_profile", row.id, "upsert", _sync_payload_waiter_profile(row))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -378,9 +594,11 @@ def delete_waiter_profile(profile_id: int):
     if error:
         return error
     row = WaiterProfile.query.filter_by(id=profile_id, tenant_id=tenant_id).first_or_404()
+    profile_id_value = row.id
     for user in User.query.filter_by(tenant_id=tenant_id, waiter_profile_id=row.id).all():
         user.waiter_profile_id = None
     db.session.delete(row)
+    _emit_sync_event(tenant_id, "waiter_profile", profile_id_value, "delete", {"id": profile_id_value})
     db.session.commit()
     return jsonify({"success": True})
 
@@ -421,6 +639,8 @@ def create_category_flat():
         return jsonify({"error": "name is required"}), 400
     try:
         db.session.add(row)
+        db.session.flush()
+        _emit_sync_event(tenant_id, "category", row.id, "upsert", _sync_payload_category(row))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -441,6 +661,8 @@ def update_category_flat(category_id: int):
     if "quantity_step" in payload:
         row.quantity_step = _decimal(payload.get("quantity_step"), "1")
     try:
+        db.session.flush()
+        _emit_sync_event(tenant_id, "category", row.id, "upsert", _sync_payload_category(row))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -455,7 +677,9 @@ def delete_category_flat(category_id: int):
     if error:
         return error
     row = Category.query.filter_by(id=category_id, tenant_id=tenant_id).first_or_404()
+    category_id_value = row.id
     db.session.delete(row)
+    _emit_sync_event(tenant_id, "category", category_id_value, "delete", {"id": category_id_value})
     db.session.commit()
     return jsonify({"success": True})
 
@@ -492,6 +716,8 @@ def create_subcategory_flat():
         return jsonify({"error": "name is required"}), 400
     try:
         db.session.add(row)
+        db.session.flush()
+        _emit_sync_event(tenant_id, "subcategory", row.id, "upsert", _sync_payload_subcategory(row))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -512,6 +738,8 @@ def update_subcategory_flat(subcategory_id: int):
     if "category_id" in payload:
         row.category_id = payload.get("category_id")
     try:
+        db.session.flush()
+        _emit_sync_event(tenant_id, "subcategory", row.id, "upsert", _sync_payload_subcategory(row))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -526,7 +754,9 @@ def delete_subcategory_flat(subcategory_id: int):
     if error:
         return error
     row = SubCategory.query.filter_by(id=subcategory_id, tenant_id=tenant_id).first_or_404()
+    subcategory_id_value = row.id
     db.session.delete(row)
+    _emit_sync_event(tenant_id, "subcategory", subcategory_id_value, "delete", {"id": subcategory_id_value})
     db.session.commit()
     return jsonify({"success": True})
 
@@ -559,6 +789,8 @@ def create_station_flat():
         return jsonify({"error": "name is required"}), 400
     try:
         db.session.add(row)
+        db.session.flush()
+        _emit_sync_event(tenant_id, "station", row.id, "upsert", _sync_payload_station(row))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -583,6 +815,8 @@ def update_station_flat(station_id: int):
     if "cashier_printer" in payload:
         row.cashier_printer = bool(payload.get("cashier_printer"))
     try:
+        db.session.flush()
+        _emit_sync_event(tenant_id, "station", row.id, "upsert", _sync_payload_station(row))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -597,7 +831,9 @@ def delete_station_flat(station_id: int):
     if error:
         return error
     row = Station.query.filter_by(id=station_id, tenant_id=tenant_id).first_or_404()
+    station_id_value = row.id
     db.session.delete(row)
+    _emit_sync_event(tenant_id, "station", station_id_value, "delete", {"id": station_id_value})
     db.session.commit()
     return jsonify({"success": True})
 
@@ -634,6 +870,8 @@ def create_table_flat():
         row.waiters = User.query.filter(User.tenant_id == tenant_id, User.id.in_(waiter_ids)).all()
     try:
         db.session.add(row)
+        db.session.flush()
+        _emit_sync_event(tenant_id, "table", row.id, "upsert", _sync_payload_table(row))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -655,6 +893,8 @@ def update_table_flat(table_id: int):
         row.is_vip = bool(payload.get("is_vip"))
     if "waiter_ids" in payload:
         row.waiters = User.query.filter(User.tenant_id == tenant_id, User.id.in_(payload.get("waiter_ids") or [])).all()
+    db.session.flush()
+    _emit_sync_event(tenant_id, "table", row.id, "upsert", _sync_payload_table(row))
     db.session.commit()
     return jsonify(_table_payload(row))
 
@@ -666,7 +906,9 @@ def delete_table_flat(table_id: int):
     if error:
         return error
     row = Table.query.filter_by(id=table_id, tenant_id=tenant_id).first_or_404()
+    table_id_value = row.id
     db.session.delete(row)
+    _emit_sync_event(tenant_id, "table", table_id_value, "delete", {"id": table_id_value})
     db.session.commit()
     return jsonify({"success": True})
 
@@ -732,6 +974,8 @@ def create_menu_item_flat():
         return jsonify({"msg": "name is required"}), 400
     try:
         db.session.add(row)
+        db.session.flush()
+        _emit_sync_event(tenant_id, "menu_item", row.id, "upsert", _sync_payload_menu_item(row))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -766,6 +1010,8 @@ def update_menu_item_flat(item_id: int):
     if "image_url" in payload:
         row.image_url = payload.get("image_url") or None
     try:
+        db.session.flush()
+        _emit_sync_event(tenant_id, "menu_item", row.id, "upsert", _sync_payload_menu_item(row))
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
@@ -780,7 +1026,9 @@ def delete_menu_item_flat(item_id: int):
     if error:
         return error
     row = MenuItem.query.filter_by(id=item_id, tenant_id=tenant_id).first_or_404()
+    item_id_value = row.id
     db.session.delete(row)
+    _emit_sync_event(tenant_id, "menu_item", item_id_value, "delete", {"id": item_id_value})
     db.session.commit()
     return jsonify({"success": True})
 
@@ -1053,6 +1301,8 @@ def inventory_items_create():
         is_active=bool(payload.get("is_active", True)),
     )
     db.session.add(row)
+    db.session.flush()
+    _emit_sync_event(tenant_id, "inventory_item", row.id, "upsert", _sync_payload_inventory_item(row))
     db.session.commit()
     return jsonify({"msg": "Inventory item created successfully", "id": row.id}), 201
 
@@ -1149,6 +1399,8 @@ def inventory_item_update(item_id: int):
     row.servings_per_unit = container_size_ml / default_shot_ml
     if "is_active" in payload:
         row.is_active = bool(payload.get("is_active"))
+    db.session.flush()
+    _emit_sync_event(tenant_id, "inventory_item", row.id, "upsert", _sync_payload_inventory_item(row))
     db.session.commit()
     return jsonify({"msg": "Inventory item updated successfully"}), 200
 
@@ -1162,7 +1414,9 @@ def inventory_item_delete(item_id: int):
     row = InventoryItem.query.filter_by(id=item_id, tenant_id=tenant_id).first()
     if row is None:
         return jsonify({"msg": "Inventory item not found"}), 404
+    item_id_value = row.id
     db.session.delete(row)
+    _emit_sync_event(tenant_id, "inventory_item", item_id_value, "delete", {"id": item_id_value})
     db.session.commit()
     return jsonify({"msg": "Inventory item deleted"}), 200
 
@@ -1179,6 +1433,7 @@ def inventory_links_create(item_id: int):
     payload = request.get_json(silent=True) or {}
     groups = payload.get("links") or []
     created = []
+    created_links = []
     skipped = []
     for group in groups:
         menu_item_ids = group.get("menu_item_ids") or []
@@ -1228,6 +1483,10 @@ def inventory_links_create(item_id: int):
             )
             db.session.add(link)
             created.append(menu_item_id)
+            created_links.append(link)
+    db.session.flush()
+    for link in created_links:
+        _emit_sync_event(tenant_id, "inventory_menu_link", link.id, "upsert", _sync_payload_inventory_menu_link(link))
     db.session.commit()
     return jsonify({"inventory_item_id": item_id, "created": created, "skipped": skipped}), 201
 
@@ -1308,6 +1567,8 @@ def inventory_link_update(link_id: int):
         link.serving_type = serving_type
         link.serving_value = serving_value
         link.deduction_ratio = deduction_ratio
+    db.session.flush()
+    _emit_sync_event(tenant_id, "inventory_menu_link", link.id, "upsert", _sync_payload_inventory_menu_link(link))
     db.session.commit()
     return jsonify({"msg": "Link updated successfully"}), 200
 
@@ -1321,7 +1582,9 @@ def inventory_link_delete(link_id: int):
     link = InventoryMenuLink.query.filter_by(id=link_id, tenant_id=tenant_id).first()
     if link is None:
         return jsonify({"msg": "Link not found"}), 404
+    link_id_value = link.id
     db.session.delete(link)
+    _emit_sync_event(tenant_id, "inventory_menu_link", link_id_value, "delete", {"id": link_id_value})
     db.session.commit()
     return jsonify({"msg": "Link deleted"}), 200
 
@@ -1381,6 +1644,9 @@ def create_purchase():
         stock = StoreStock(tenant_id=tenant_id, inventory_item_id=inventory_item_id, quantity=0.0)
         db.session.add(stock)
     stock.quantity = _inventory_decimal(stock.quantity) + quantity
+    db.session.flush()
+    _emit_sync_event(tenant_id, "stock_purchase", purchase.id, "upsert", _sync_payload_stock_purchase(purchase))
+    _emit_sync_event(tenant_id, "store_stock", stock.inventory_item_id, "upsert", _sync_payload_store_stock(stock))
     db.session.commit()
     return jsonify({"msg": "Purchase recorded successfully", "purchase_id": purchase.id}), 201
 
@@ -1439,6 +1705,9 @@ def update_purchase(item_id: int):
     row.quantity = new_quantity
     row.unit_price = payload.get("unit_price", row.unit_price)
     row.status = "Updated"
+    db.session.flush()
+    _emit_sync_event(tenant_id, "stock_purchase", row.id, "upsert", _sync_payload_stock_purchase(row))
+    _emit_sync_event(tenant_id, "store_stock", stock.inventory_item_id, "upsert", _sync_payload_store_stock(stock))
     db.session.commit()
     return jsonify({"msg": "Purchase updated successfully"}), 200
 
@@ -1459,6 +1728,9 @@ def delete_purchase(item_id: int):
         return jsonify({"msg": "Cannot delete purchase because stock has already been used"}), 400
     stock.quantity = _inventory_decimal(stock.quantity) - _inventory_decimal(row.quantity)
     row.status = "Deleted"
+    db.session.flush()
+    _emit_sync_event(tenant_id, "stock_purchase", row.id, "upsert", _sync_payload_stock_purchase(row))
+    _emit_sync_event(tenant_id, "store_stock", stock.inventory_item_id, "upsert", _sync_payload_store_stock(stock))
     db.session.commit()
     return jsonify({"msg": "Purchase deleted and store stock adjusted"}), 200
 
@@ -1535,6 +1807,10 @@ def create_transfer():
         status="Transferred",
     )
     db.session.add(transfer)
+    db.session.flush()
+    _emit_sync_event(tenant_id, "stock_transfer", transfer.id, "upsert", _sync_payload_stock_transfer(transfer))
+    _emit_sync_event(tenant_id, "store_stock", store_stock.inventory_item_id, "upsert", _sync_payload_store_stock(store_stock))
+    _emit_sync_event(tenant_id, "station_stock", station_stock.station_id, "upsert", _sync_payload_station_stock(station_stock))
     db.session.commit()
     return jsonify({"msg": "Stock transferred successfully", "transfer_id": transfer.id}), 201
 
@@ -1610,6 +1886,10 @@ def update_transfer(item_id: int):
     station_stock.quantity = updated_station_qty
     transfer.quantity = new_quantity
     transfer.status = "Updated"
+    db.session.flush()
+    _emit_sync_event(tenant_id, "stock_transfer", transfer.id, "upsert", _sync_payload_stock_transfer(transfer))
+    _emit_sync_event(tenant_id, "store_stock", store_stock.inventory_item_id, "upsert", _sync_payload_store_stock(store_stock))
+    _emit_sync_event(tenant_id, "station_stock", station_stock.station_id, "upsert", _sync_payload_station_stock(station_stock))
     db.session.commit()
     return jsonify({"msg": "Transfer updated successfully"}), 200
 
@@ -1637,6 +1917,10 @@ def delete_transfer(item_id: int):
         return jsonify({"msg": "Cannot delete transfer because stock has already been used at the station"}), 400
     station_stock.quantity = _inventory_decimal(station_stock.quantity) - _inventory_decimal(transfer.quantity)
     transfer.status = "Deleted"
+    db.session.flush()
+    _emit_sync_event(tenant_id, "stock_transfer", transfer.id, "upsert", _sync_payload_stock_transfer(transfer))
+    _emit_sync_event(tenant_id, "store_stock", store_stock.inventory_item_id, "upsert", _sync_payload_store_stock(store_stock))
+    _emit_sync_event(tenant_id, "station_stock", station_stock.station_id, "upsert", _sync_payload_station_stock(station_stock))
     db.session.commit()
     return jsonify({"msg": "Transfer deleted and stock quantities adjusted"}), 200
 
