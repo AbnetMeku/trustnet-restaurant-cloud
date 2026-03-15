@@ -51,6 +51,28 @@ SYNCED_ENTITY_TYPES = {
 }
 
 
+def _reset_tenant_data(tenant_id: int) -> None:
+    db.session.query(OrderSummary).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(StationStockSnapshot).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(StoreStockSnapshot).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(StockTransfer).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(StockPurchase).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(StationStock).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(StoreStock).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(InventoryMenuLink).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(MenuItem).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(SubCategory).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(Category).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(Table).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(User).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(WaiterProfile).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(Station).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(InventoryItem).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(BrandingSettings).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(SyncEvent).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    db.session.query(SyncIdMap).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+
+
 def _parse_date(value):
     if not value:
         return None
@@ -486,6 +508,31 @@ def _apply_sync_event(tenant_id: int, store_id: int, entity_type: str, payload: 
         summary.table_number = (payload or {}).get("table_number")
         summary.status = (payload or {}).get("status") or "pending"
         summary.total_amount = amount
+
+
+@sync_bp.post("/sync/reset")
+def reset_sync_data():
+    payload = request.get_json(silent=True) or {}
+    tenant_id = payload.get("tenant_id")
+    store_id = payload.get("store_id")
+    device_id = (payload.get("device_id") or "").strip()
+
+    if not tenant_id or not store_id or not device_id:
+        return jsonify({"error": "tenant_id, store_id, and device_id are required"}), 400
+
+    device = Device.query.filter_by(
+        tenant_id=tenant_id,
+        store_id=store_id,
+        device_id=device_id,
+        status="active",
+    ).first()
+    if device is None:
+        return jsonify({"error": "device is not active"}), 403
+
+    _reset_tenant_data(tenant_id)
+    db.session.commit()
+    return jsonify({"status": "ok"})
+
 
 @sync_bp.post("/sync/push")
 def push_sync_batch():
