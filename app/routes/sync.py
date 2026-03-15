@@ -160,11 +160,12 @@ def _upsert_user(tenant_id: int, payload: dict):
     row.role = (payload.get("role") or "waiter").strip()
     row.tenant_id = tenant_id
     row.is_active = True
-    waiter_profile_id = payload.get("waiter_profile_id")
-    mapped_profile_id = _resolve_entity_id(tenant_id, "waiter_profile", waiter_profile_id)
-    row.waiter_profile_id = mapped_profile_id
     if not row.password_hash:
         row.password_hash = generate_password_hash("change-me")
+    with db.session.no_autoflush:
+        waiter_profile_id = payload.get("waiter_profile_id")
+        mapped_profile_id = _resolve_entity_id(tenant_id, "waiter_profile", waiter_profile_id)
+    row.waiter_profile_id = mapped_profile_id
     if created:
         db.session.flush()
         _ensure_mapping(tenant_id, "user", local_id, row.id)
