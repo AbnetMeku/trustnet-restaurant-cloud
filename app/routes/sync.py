@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt, verify_jwt_in_request
+from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
 
 from ..auth import extract_roles_from_claims
@@ -54,25 +55,31 @@ SYNCED_ENTITY_TYPES = {
 
 
 def _reset_tenant_data(tenant_id: int) -> None:
-    db.session.query(OrderSummary).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(StationStockSnapshot).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(StoreStockSnapshot).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(StockTransfer).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(StockPurchase).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(StationStock).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(StoreStock).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(InventoryMenuLink).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(MenuItem).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(SubCategory).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(Category).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(Table).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(User).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(WaiterProfile).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(Station).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(InventoryItem).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(BrandingSettings).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(SyncEvent).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
-    db.session.query(SyncIdMap).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+    inspector = inspect(db.engine)
+
+    def delete_if_exists(model, table_name: str) -> None:
+        if inspector.has_table(table_name):
+            db.session.query(model).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+
+    delete_if_exists(OrderSummary, "order_summaries")
+    delete_if_exists(StationStockSnapshot, "station_stock_snapshots")
+    delete_if_exists(StoreStockSnapshot, "store_stock_snapshots")
+    delete_if_exists(StockTransfer, "stock_transfers")
+    delete_if_exists(StockPurchase, "stock_purchases")
+    delete_if_exists(StationStock, "station_stock")
+    delete_if_exists(StoreStock, "store_stock")
+    delete_if_exists(InventoryMenuLink, "inventory_menu_links")
+    delete_if_exists(MenuItem, "menu_items")
+    delete_if_exists(SubCategory, "subcategories")
+    delete_if_exists(Category, "categories")
+    delete_if_exists(Table, "tables")
+    delete_if_exists(User, "users")
+    delete_if_exists(WaiterProfile, "waiter_profiles")
+    delete_if_exists(Station, "stations")
+    delete_if_exists(InventoryItem, "inventory_items")
+    delete_if_exists(BrandingSettings, "branding_settings")
+    delete_if_exists(SyncEvent, "sync_events")
+    delete_if_exists(SyncIdMap, "sync_id_map")
 
 
 def _parse_date(value):
