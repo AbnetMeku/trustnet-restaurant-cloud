@@ -51,6 +51,15 @@ const generateLicenseKey = () => {
   return `TN-${groups.join("-")}`;
 };
 
+const toDateTimeLocal = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetMinutes = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offsetMinutes * 60 * 1000);
+  return local.toISOString().slice(0, 16);
+};
+
 const getMainStore = (stores) => {
   const rows = stores || [];
   if (!rows.length) return null;
@@ -63,9 +72,18 @@ const getMainStore = (stores) => {
 export default function LicenseManagement({ tenants, licenses, authToken, onRefresh }) {
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [editForm, setEditForm] = useState({
+    id: null,
+    license_key: "",
+    status: "active",
+    expires_at: "",
+  });
   const [errors, setErrors] = useState({});
+  const [editErrors, setEditErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [editSubmitting, setEditSubmitting] = useState(false);
   const [deviceModalOpen, setDeviceModalOpen] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState(null);
 
@@ -122,6 +140,17 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
     setModalOpen(true);
   };
 
+  const openEdit = (license) => {
+    setEditForm({
+      id: license.id,
+      license_key: license.license_key || "",
+      status: license.status || "inactive",
+      expires_at: toDateTimeLocal(license.expires_at),
+    });
+    setEditErrors({});
+    setEditModalOpen(true);
+  };
+
   const openDeviceDetails = (device) => {
     setSelectedDevice(device);
     setDeviceModalOpen(true);
@@ -133,6 +162,13 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
     if (!form.store_id) nextErrors.store_id = "Store is required.";
     if (!form.license_key.trim()) nextErrors.license_key = "License key is required.";
     setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const validateEditForm = () => {
+    const nextErrors = {};
+    if (!editForm.license_key.trim()) nextErrors.license_key = "License key is required.";
+    setEditErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
 
@@ -168,6 +204,51 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
     }
   };
 
+  const handleUpdate = async () => {
+    if (!validateEditForm()) return;
+    setEditSubmitting(true);
+    try {
+      await axios.put(
+        `/api/licenses/${editForm.id}`,
+        {
+          license_key: editForm.license_key.trim(),
+          status: editForm.status,
+          expires_at: editForm.expires_at || null,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${authToken || localStorage.getItem("auth_token")}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      toast.success("License updated.");
+      setEditModalOpen(false);
+      await onRefresh?.();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Failed to update license."));
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (license) => {
+    const confirmed = window.confirm("Delete this license? This cannot be undone.");
+    if (!confirmed) return;
+    try {
+      await axios.delete(`/api/licenses/${license.id}`, {
+        headers: {
+          Authorization: `Bearer ${authToken || localStorage.getItem("auth_token")}`,
+          "Content-Type": "application/json",
+        },
+      });
+      toast.success("License deleted.");
+      await onRefresh?.();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Failed to delete license."));
+    }
+  };
+
   const selectedTenant = tenants.find(
     (tenant) => String(tenant.id) === String(form.tenant_id)
   );
@@ -175,6 +256,9 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
     const mainStore = getMainStore(selectedTenant?.stores);
     return mainStore ? [mainStore] : [];
   }, [selectedTenant]);
+  const editLicense = licenses.find((license) => license.id === editForm.id);
+  const editTenant = editLicense ? tenantIndex.get(String(editLicense.tenant_id)) : null;
+  const editStore = editLicense ? storeIndex.get(String(editLicense.store_id)) : null;
 
   return (
     <Card className="admin-card p-5 md:p-6 space-y-4">
@@ -327,12 +411,13 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Expires</th>
               <th className="px-3 py-2">Devices</th>
+              <th className="px-3 py-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
+                <td colSpan={7} className="px-3 py-6 text-center text-sm text-slate-500 dark:text-slate-400">
                   No licenses found.
                 </td>
               </tr>
@@ -398,6 +483,16 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
                         <span className="text-xs text-slate-500 dark:text-slate-400">No devices</span>
                       )}
                     </td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button variant="outline" size="sm" onClick={() => openEdit(license)}>
+                          Edit
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={() => handleDelete(license)}>
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })
@@ -405,6 +500,84 @@ export default function LicenseManagement({ tenants, licenses, authToken, onRefr
           </tbody>
         </table>
       </div>
+
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="sm:max-w-lg border-slate-200 bg-white p-0 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+          <DialogHeader>
+            <div className="border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/60">
+              <DialogTitle className="text-lg text-slate-900 dark:text-slate-100">
+                Edit License
+              </DialogTitle>
+            </div>
+          </DialogHeader>
+          <div className="space-y-4 px-5 py-4">
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Tenant</p>
+              <p className="font-semibold">{editTenant?.name || "Tenant"}</p>
+              {editTenant?.code && (
+                <p className="text-xs text-slate-500 dark:text-slate-400">{editTenant.code}</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Store</p>
+              <p className="font-semibold">{editStore?.name || "Store"}</p>
+              {editStore?.code && (
+                <p className="text-xs text-slate-500 dark:text-slate-400">{editStore.code}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <Label>License Key</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditForm({ ...editForm, license_key: generateLicenseKey() })}
+                >
+                  Generate
+                </Button>
+              </div>
+              <Input
+                value={editForm.license_key}
+                onChange={(event) => setEditForm({ ...editForm, license_key: event.target.value })}
+                placeholder="License key"
+              />
+              {editErrors.license_key && (
+                <p className="text-xs text-red-500">{editErrors.license_key}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <select
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                value={editForm.status}
+                onChange={(event) => setEditForm({ ...editForm, status: event.target.value })}
+              >
+                <option value="active">Active</option>
+                <option value="trial">Trial</option>
+                <option value="inactive">Inactive</option>
+                <option value="revoked">Revoked</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Expires At</Label>
+              <Input
+                type="datetime-local"
+                value={editForm.expires_at}
+                onChange={(event) => setEditForm({ ...editForm, expires_at: event.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter className="border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/40">
+            <Button type="button" variant="outline" onClick={() => setEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleUpdate} disabled={editSubmitting}>
+              {editSubmitting ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={deviceModalOpen} onOpenChange={setDeviceModalOpen}>
         <DialogContent className="sm:max-w-lg border-slate-200 bg-white p-0 shadow-xl dark:border-slate-800 dark:bg-slate-900">

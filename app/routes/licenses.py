@@ -146,3 +146,61 @@ def create_license():
             "expires_at": license_row.expires_at.isoformat() if license_row.expires_at else None,
         }
     ), 201
+
+
+@licenses_bp.put("/licenses/<int:license_id>")
+@roles_required("super_admin")
+def update_license(license_id: int):
+    payload = request.get_json(silent=True) or {}
+    row = License.query.get(license_id)
+    if row is None:
+        return jsonify({"error": "license not found"}), 404
+
+    license_key = payload.get("license_key")
+    if isinstance(license_key, str):
+        license_key = license_key.strip()
+        if not license_key:
+            return jsonify({"error": "license_key cannot be empty"}), 400
+        row.license_key = license_key
+
+    status = payload.get("status")
+    if isinstance(status, str) and status.strip():
+        row.status = status.strip().lower()
+
+    expires_at_raw = payload.get("expires_at")
+    if expires_at_raw is not None:
+        if expires_at_raw == "":
+            row.expires_at = None
+        else:
+            expires_at = datetime.fromisoformat(expires_at_raw)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            row.expires_at = expires_at
+
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": "license key already exists"}), 409
+
+    return jsonify(
+        {
+            "id": row.id,
+            "tenant_id": row.tenant_id,
+            "store_id": row.store_id,
+            "license_key": row.license_key,
+            "status": row.status,
+            "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+        }
+    ), 200
+
+
+@licenses_bp.delete("/licenses/<int:license_id>")
+@roles_required("super_admin")
+def delete_license(license_id: int):
+    row = License.query.get(license_id)
+    if row is None:
+        return jsonify({"error": "license not found"}), 404
+    db.session.delete(row)
+    db.session.commit()
+    return jsonify({"status": "deleted", "id": license_id}), 200
