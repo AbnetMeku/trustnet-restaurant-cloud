@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt, verify_jwt_in_request
 from sqlalchemy import inspect
 from werkzeug.security import generate_password_hash
@@ -606,28 +606,46 @@ def push_sync_batch():
             accepted.append(event_id)
             continue
 
-        db.session.add(
-            SyncEvent(
-                tenant_id=tenant_id,
-                store_id=store_id,
-                device_id=device_id,
-                event_id=event_id,
-                entity_type=entity_type,
-                entity_id=entity_id,
-                operation=operation,
-                payload=event_payload,
-            )
-        )
-
         if operation == "delete":
+            db.session.add(
+                SyncEvent(
+                    tenant_id=tenant_id,
+                    store_id=store_id,
+                    device_id=device_id,
+                    event_id=event_id,
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                    operation=operation,
+                    payload=event_payload,
+                )
+            )
             accepted.append(event_id)
             continue
 
         try:
             with db.session.begin_nested():
                 _apply_sync_event(tenant_id, store_id, entity_type, event_payload)
+                db.session.add(
+                    SyncEvent(
+                        tenant_id=tenant_id,
+                        store_id=store_id,
+                        device_id=device_id,
+                        event_id=event_id,
+                        entity_type=entity_type,
+                        entity_id=entity_id,
+                        operation=operation,
+                        payload=event_payload,
+                    )
+                )
             accepted.append(event_id)
         except Exception:
+            current_app.logger.exception(
+                "Sync apply failed for tenant=%s store=%s event=%s type=%s",
+                tenant_id,
+                store_id,
+                event_id,
+                entity_type,
+            )
             continue
 
     db.session.commit()
