@@ -396,12 +396,16 @@ def _upsert_stock_purchase(tenant_id: int, payload: dict):
     cloud_id = _resolve_entity_id(tenant_id, "stock_purchase", local_id)
     row = StockPurchase.query.get(cloud_id) if cloud_id else None
     created = False
+    with db.session.no_autoflush:
+        inventory_id = _resolve_entity_id(tenant_id, "inventory_item", payload.get("inventory_item_id"))
+    if not inventory_id:
+        return
     if row is None:
         row = StockPurchase()
         db.session.add(row)
         created = True
     row.tenant_id = tenant_id
-    row.inventory_item_id = _resolve_entity_id(tenant_id, "inventory_item", payload.get("inventory_item_id"))
+    row.inventory_item_id = inventory_id
     row.quantity = payload.get("quantity", row.quantity or 0.0)
     row.unit_price = payload.get("unit_price", row.unit_price)
     row.status = payload.get("status") or row.status
@@ -418,13 +422,18 @@ def _upsert_stock_transfer(tenant_id: int, payload: dict):
     cloud_id = _resolve_entity_id(tenant_id, "stock_transfer", local_id)
     row = StockTransfer.query.get(cloud_id) if cloud_id else None
     created = False
+    with db.session.no_autoflush:
+        inventory_id = _resolve_entity_id(tenant_id, "inventory_item", payload.get("inventory_item_id"))
+        station_id = _resolve_entity_id(tenant_id, "station", payload.get("station_id"))
+    if not inventory_id or not station_id:
+        return
     if row is None:
         row = StockTransfer()
         db.session.add(row)
         created = True
     row.tenant_id = tenant_id
-    row.inventory_item_id = _resolve_entity_id(tenant_id, "inventory_item", payload.get("inventory_item_id"))
-    row.station_id = _resolve_entity_id(tenant_id, "station", payload.get("station_id"))
+    row.inventory_item_id = inventory_id
+    row.station_id = station_id
     row.quantity = payload.get("quantity", row.quantity or 0.0)
     row.status = payload.get("status") or row.status
     created_at = _parse_datetime(payload.get("created_at"))
