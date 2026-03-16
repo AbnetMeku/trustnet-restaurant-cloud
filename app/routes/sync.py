@@ -136,6 +136,16 @@ def _ensure_mapping(tenant_id: int, entity_type: str, local_id: str, cloud_id: i
         row.cloud_id = cloud_id
 
 
+def _delete_mapping(tenant_id: int, entity_type: str, local_id: str | None) -> None:
+    if not local_id:
+        return
+    SyncIdMap.query.filter_by(
+        tenant_id=tenant_id,
+        entity_type=entity_type,
+        local_id=str(local_id),
+    ).delete(synchronize_session=False)
+
+
 def _resolve_entity_id(tenant_id: int, entity_type: str, local_id: str):
     if not local_id:
         return None
@@ -559,6 +569,52 @@ def _apply_sync_event(tenant_id: int, store_id: int, entity_type: str, payload: 
         summary.total_amount = amount
 
 
+def _apply_delete_event(tenant_id: int, store_id: int, entity_type: str, payload: dict, local_id: str):
+    if entity_type == "order":
+        order_id = (payload or {}).get("order_id") or (payload or {}).get("id") or local_id
+        if order_id:
+            OrderSummary.query.filter_by(
+                tenant_id=tenant_id,
+                store_id=store_id,
+                source_order_id=str(order_id),
+            ).delete(synchronize_session=False)
+        return
+
+    if entity_type == "branding":
+        BrandingSettings.query.filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+        return
+
+    cloud_id = _resolve_entity_id(tenant_id, entity_type, local_id)
+    if not cloud_id:
+        return
+
+    model = {
+        "user": User,
+        "table": Table,
+        "station": Station,
+        "waiter_profile": WaiterProfile,
+        "category": Category,
+        "subcategory": SubCategory,
+        "menu_item": MenuItem,
+        "inventory_item": InventoryItem,
+        "inventory_menu_link": InventoryMenuLink,
+        "store_stock": StoreStock,
+        "station_stock": StationStock,
+        "stock_purchase": StockPurchase,
+        "stock_transfer": StockTransfer,
+        "station_stock_snapshot": StationStockSnapshot,
+        "store_stock_snapshot": StoreStockSnapshot,
+    }.get(entity_type)
+
+    if model is None:
+        return
+
+    row = model.query.get(cloud_id)
+    if row is not None:
+        db.session.delete(row)
+    _delete_mapping(tenant_id, entity_type, local_id)
+
+
 @sync_bp.post("/sync/reset")
 def reset_sync_data():
     payload = request.get_json(silent=True) or {}
@@ -647,19 +703,30 @@ def push_sync_batch():
             continue
 
         if operation == "delete":
-            db.session.add(
-                SyncEvent(
-                    tenant_id=tenant_id,
-                    store_id=store_id,
-                    device_id=device_id,
-                    event_id=event_id,
-                    entity_type=entity_type,
-                    entity_id=entity_id,
-                    operation=operation,
-                    payload=event_payload,
+            try:
+                with db.session.begin_nested():
+                    _apply_delete_event(tenant_id, store_id, entity_type, event_payload, entity_id)
+                    db.session.add(
+                        SyncEvent(
+                            tenant_id=tenant_id,
+                            store_id=store_id,
+                            device_id=device_id,
+                            event_id=event_id,
+                            entity_type=entity_type,
+                            entity_id=entity_id,
+                            operation=operation,
+                            payload=event_payload,
+                        )
+                    )
+                accepted.append(event_id)
+            except Exception:
+                current_app.logger.exception(
+                    "Sync delete failed for tenant=%s store=%s event=%s type=%s",
+                    tenant_id,
+                    store_id,
+                    event_id,
+                    entity_type,
                 )
-            )
-            accepted.append(event_id)
             continue
 
         try:

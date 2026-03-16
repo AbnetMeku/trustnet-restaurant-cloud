@@ -17,23 +17,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   DEFAULT_BRANDING,
   getBrandingSettings,
   updateBrandingSettings,
   uploadBrandingAsset,
 } from "@/api/branding";
 import { getSubcategories } from "@/api/subcategories";
-import { clearOrderHistoryRange } from "@/api/order_history";
 import { getApiErrorMessage } from "@/lib/apiError";
 
 const DEFAULT_FORM = {
@@ -51,8 +40,6 @@ export default function BrandingManagement() {
   const { user, authToken } = useAuth();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [deletingHistory, setDeletingHistory] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBackground, setUploadingBackground] = useState(false);
   const [brandingLocked, setBrandingLocked] = useState(CUSTOM_BRANDING_DISABLED_ENV);
@@ -61,10 +48,6 @@ export default function BrandingManagement() {
   const [subcategories, setSubcategories] = useState([]);
   const [form, setForm] = useState(DEFAULT_FORM);
   const [preview, setPreview] = useState(DEFAULT_BRANDING);
-  const [clearRange, setClearRange] = useState({
-    start_date: "",
-    end_date: "",
-  });
   const allowBrandAssets = !brandingLocked || user?.cloud_role === "super_admin";
 
   useEffect(() => {
@@ -276,46 +259,6 @@ export default function BrandingManagement() {
     }
   };
 
-  const canClearHistory =
-    user?.role === "admin" &&
-    Boolean(clearRange.start_date) &&
-    Boolean(clearRange.end_date) &&
-    !deletingHistory;
-
-  const openClearHistoryConfirmation = () => {
-    if (user?.role !== "admin") {
-      toast.error("Only admins can clear order history.");
-      return;
-    }
-    if (!clearRange.start_date || !clearRange.end_date) {
-      toast.error("Select both start and end dates first.");
-      return;
-    }
-    if (clearRange.start_date > clearRange.end_date) {
-      toast.error("Start date cannot be after end date.");
-      return;
-    }
-    setConfirmOpen(true);
-  };
-
-  const handleClearHistory = async () => {
-    setDeletingHistory(true);
-    try {
-      const result = await clearOrderHistoryRange(authToken, clearRange);
-      toast.success(
-        result.deleted_orders
-          ? `Cleared ${result.deleted_orders} order(s) from history.`
-          : "No order history found in the selected range."
-      );
-      setConfirmOpen(false);
-      setClearRange({ start_date: "", end_date: "" });
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "Failed to clear order history."));
-    } finally {
-      setDeletingHistory(false);
-    }
-  };
-
   if (loading) {
     return <div className="text-sm text-slate-500 dark:text-slate-300">Loading settings...</div>;
   }
@@ -467,56 +410,6 @@ export default function BrandingManagement() {
                 Custom branding updates (logos and images) are disabled in the TrustNet Cloud tenant portal. Please contact the super admin team if you need to request a change.
               </Card>
             )}
-            {user?.role === "admin" && (
-              <Card className="admin-card space-y-4 border border-red-200/80 p-4 backdrop-blur-sm dark:border-red-900/70">
-                <div className="space-y-1">
-                  <h4 className="font-medium text-red-700 dark:text-red-400">Clear Order History</h4>
-                  <p className="text-sm text-slate-600 dark:text-slate-300">
-                    Permanently deletes orders, order items, and print jobs inside the selected business-day date range.
-                  </p>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="clear-history-start-date">Start Date</Label>
-                    <Input
-                      id="clear-history-start-date"
-                      type="date"
-                      value={clearRange.start_date}
-                      onChange={(e) =>
-                        setClearRange((prev) => ({
-                          ...prev,
-                          start_date: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="clear-history-end-date">End Date</Label>
-                    <Input
-                      id="clear-history-end-date"
-                      type="date"
-                      value={clearRange.end_date}
-                      onChange={(e) =>
-                        setClearRange((prev) => ({
-                          ...prev,
-                          end_date: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <Button variant="destructive" onClick={openClearHistoryConfirmation} disabled={!canClearHistory}>
-                    {deletingHistory ? "Clearing..." : "Clear History"}
-                  </Button>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">This action cannot be undone.</p>
-                </div>
-              </Card>
-            )}
-
             <Card className="admin-card p-4 space-y-4 backdrop-blur-sm">
               <div>
                 <h4 className="font-medium">Operations</h4>
@@ -649,30 +542,6 @@ export default function BrandingManagement() {
         </TabsContent>
       </Tabs>
 
-      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Clear selected order history?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete all orders, order items, and print jobs from{" "}
-              {clearRange.start_date || "the selected start date"} to {clearRange.end_date || "the selected end date"}.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingHistory}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault();
-                handleClearHistory();
-              }}
-              disabled={deletingHistory}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
-            >
-              {deletingHistory ? "Clearing..." : "Yes, clear history"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
