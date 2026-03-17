@@ -69,6 +69,7 @@ export default function SuperAdminLogin() {
             onChange={(e) => setUsername(e.target.value)}
             placeholder="Username"
             required
+            data-testid="superadmin-username"
             className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-400"
           />
         </div>
@@ -81,6 +82,7 @@ export default function SuperAdminLogin() {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
             required
+            data-testid="superadmin-password"
             className="w-full rounded-lg border border-white/20 bg-white/5 px-4 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-blue-400"
           />
         </div>
@@ -88,6 +90,7 @@ export default function SuperAdminLogin() {
         <button
           type="submit"
           disabled={submitting}
+          data-testid="superadmin-submit"
           className="w-full rounded-lg bg-blue-500 py-2 font-semibold text-white transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {submitting ? "Signing In..." : "Enter Super Admin Portal"}

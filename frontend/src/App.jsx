@@ -138,6 +138,7 @@ function SuperAdminDashboard() {
               <button
                 className={`admin-nav-item ${activeSection === "tenants" ? "is-active" : ""}`}
                 onClick={() => handleSectionChange("tenants")}
+                data-testid="superadmin-nav-tenants"
               >
                 <FaUsers className="admin-nav-icon" />
                 {sidebarOpen && <span className="text-sm font-medium tracking-wide">Tenants</span>}
@@ -145,6 +146,7 @@ function SuperAdminDashboard() {
               <button
                 className={`admin-nav-item ${activeSection === "licenses" ? "is-active" : ""}`}
                 onClick={() => handleSectionChange("licenses")}
+                data-testid="superadmin-nav-licenses"
               >
                 <FaKey className="admin-nav-icon" />
                 {sidebarOpen && <span className="text-sm font-medium tracking-wide">Licenses</span>}
@@ -152,6 +154,7 @@ function SuperAdminDashboard() {
               <button
                 className={`admin-nav-item ${activeSection === "settings" ? "is-active" : ""}`}
                 onClick={() => handleSectionChange("settings")}
+                data-testid="superadmin-nav-settings"
               >
                 <FaCog className="admin-nav-icon" />
                 {sidebarOpen && <span className="text-sm font-medium tracking-wide">Settings</span>}
@@ -201,20 +204,26 @@ function SuperAdminDashboard() {
               </div>
             )}
             {activeSection === "tenants" && (
-              <TenantManagement tenants={tenants} authToken={authToken} onRefresh={loadData} />
+              <div data-testid="superadmin-section-tenants">
+                <TenantManagement tenants={tenants} authToken={authToken} onRefresh={loadData} />
+              </div>
             )}
 
             {activeSection === "licenses" && (
-              <LicenseManagement
-                tenants={tenants}
-                licenses={licenses}
-                authToken={authToken}
-                onRefresh={loadData}
-              />
+              <div data-testid="superadmin-section-licenses">
+                <LicenseManagement
+                  tenants={tenants}
+                  licenses={licenses}
+                  authToken={authToken}
+                  onRefresh={loadData}
+                />
+              </div>
             )}
 
             {activeSection === "settings" && (
-              <Settings tenants={tenants} authToken={authToken} />
+              <div data-testid="superadmin-section-settings">
+                <Settings tenants={tenants} authToken={authToken} />
+              </div>
             )}
           </main>
         </div>
