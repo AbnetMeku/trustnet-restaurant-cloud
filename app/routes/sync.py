@@ -266,9 +266,15 @@ def _upsert_category(tenant_id: int, payload: dict):
     row = Category.query.get(cloud_id) if cloud_id else None
     created = False
     if row is None:
-        row = Category()
-        db.session.add(row)
-        created = True
+        name = (payload.get("name") or "").strip()
+        if name:
+            row = Category.query.filter_by(tenant_id=tenant_id, name=name).first()
+            if row:
+                _ensure_mapping(tenant_id, "category", local_id, row.id)
+        if row is None:
+            row = Category()
+            db.session.add(row)
+            created = True
 
     row.tenant_id = tenant_id
     row.name = (payload.get("name") or row.name or "").strip()
