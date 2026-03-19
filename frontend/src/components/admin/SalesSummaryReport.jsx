@@ -210,20 +210,25 @@ export default function SalesSummaryReport({ darkMode }) {
       pdf.text(category.category, margin, yPosition);
       yPosition += lineHeight + 10;
 
-      category.subcategories.forEach((subcat) => {
+      const subcategories = Array.isArray(category.subcategories) ? category.subcategories : [];
+      subcategories.forEach((subcat) => {
         addNewPageIfNeeded(lineHeight);
         pdf.setFontSize(12);
         pdf.setTextColor(...PDF_THEME.subcategory);
         pdf.text(subcat.name, margin + 20, yPosition);
         yPosition += lineHeight + 5;
 
-        const tableData = subcat.items.map((item) => [
+        const items = Array.isArray(subcat.items) ? subcat.items : [];
+        const tableData = items.map((item) => [
           item.name,
           item.vip_status,
           String(item.quantity),
           Number(item.average_price || 0).toFixed(2),
           Number(item.total_amount || 0).toFixed(2),
         ]);
+        if (tableData.length === 0) {
+          tableData.push(["No items", "", "0", "0.00", "0.00"]);
+        }
 
         tableData.push([
           `Subtotal for ${subcat.name}`,
