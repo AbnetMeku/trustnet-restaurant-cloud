@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -1084,7 +1084,23 @@ def order_history_summary_range():
     tenant_id, error = _tenant_id_required()
     if error:
         return error
-    rows = OrderSummary.query.filter_by(tenant_id=tenant_id).all()
+    start_date_str = request.args.get("start_date")
+    end_date_str = request.args.get("end_date")
+    if not start_date_str or not end_date_str:
+        return jsonify({"error": "start_date and end_date query params are required"}), 400
+    try:
+        start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+        end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
+
+    rows = (
+        OrderSummary.query.filter_by(tenant_id=tenant_id)
+        .filter(OrderSummary.created_at >= start_dt, OrderSummary.created_at < end_dt)
+        .all()
+    )
     waiter_summary = defaultdict(lambda: {"openOrders": 0, "closedOrders": 0, "paidOrders": 0, "openAmount": 0.0, "closedAmount": 0.0, "paidAmount": 0.0})
     paid_amount = Decimal("0")
     closed_amount = Decimal("0")
