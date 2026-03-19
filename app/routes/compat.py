@@ -1184,35 +1184,115 @@ def sales_summary():
 
     rows = rows_query.all()
     total_amount = sum((_decimal(row.total_amount) for row in rows), Decimal("0"))
-    item_map = defaultdict(lambda: {"total_qty": Decimal("0"), "total_amount": Decimal("0")})
+    grouped = {}
+    menu_cache = {}
+    grand_total_qty = Decimal("0")
     for row in rows:
         for item in row.items_data or []:
-            if (item or {}).get("status") == "void":
-                continue
-            name = (item or {}).get("name")
-            if not name:
-                menu_item_id = (item or {}).get("menu_item_id") or (item or {}).get("id")
-                name = f"Item {menu_item_id}" if menu_item_id is not None else "Item"
+            status = (item or {}).get("status")
+            menu_item_id = (item or {}).get("menu_item_id") or (item or {}).get("id")
+            cached = menu_cache.get(menu_item_id)
+            if cached is None and menu_item_id is not None:
+                menu_row = MenuItem.query.filter_by(id=menu_item_id, tenant_id=tenant_id).first()
+                if menu_row:
+                    subcat_row = SubCategory.query.filter_by(id=menu_row.subcategory_id, tenant_id=tenant_id).first()
+                    cat_row = Category.query.filter_by(id=subcat_row.category_id, tenant_id=tenant_id).first() if subcat_row else None
+                    cached = {
+                        "name": menu_row.name,
+                        "subcategory_name": subcat_row.name if subcat_row else None,
+                        "category_name": cat_row.name if cat_row else None,
+                    }
+                else:
+                    cached = {}
+                menu_cache[menu_item_id] = cached
+
+            category = (item or {}).get("category_name") or (cached or {}).get("category_name") or "Uncategorized"
+            subcategory = (item or {}).get("subcategory_name") or (cached or {}).get("subcategory_name") or "Uncategorized"
+            vip_status = (item or {}).get("vip_status") or "Normal"
+            name = (item or {}).get("name") or (cached or {}).get("name") or (f"Item {menu_item_id}" if menu_item_id is not None else "Item")
             qty = _decimal((item or {}).get("quantity"))
             price = _decimal((item or {}).get("price"))
-            item_map[name]["total_qty"] += qty
-            item_map[name]["total_amount"] += qty * price
+            line_total = qty * price
 
-    item_rows = []
-    for name, agg in item_map.items():
-        item_rows.append(
+            if category not in grouped:
+                grouped[category] = {}
+            if subcategory not in grouped[category]:
+                grouped[category][subcategory] = {
+                    "items": {},
+                    "sub_category_total_qty": Decimal("0"),
+                    "sub_category_total_amount": Decimal("0"),
+                    "void_items": [],
+                }
+
+            if status == "void":
+                grouped[category][subcategory]["void_items"].append(
+                    {
+                        "menu_item_id": menu_item_id,
+                        "name": name,
+                        "vip_status": vip_status,
+                        "status": status,
+                        "quantity": float(qty),
+                        "average_price": float(price),
+                        "total_amount": float(line_total),
+                        "is_voided": True,
+                    }
+                )
+                continue
+
+            item_key = (menu_item_id, vip_status)
+            if item_key not in grouped[category][subcategory]["items"]:
+                grouped[category][subcategory]["items"][item_key] = {
+                    "menu_item_id": menu_item_id,
+                    "name": name,
+                    "vip_status": vip_status,
+                    "status": status,
+                    "quantity": 0.0,
+                    "average_price": 0.0,
+                    "total_amount": 0.0,
+                    "is_voided": False,
+                }
+
+            entry = grouped[category][subcategory]["items"][item_key]
+            entry["quantity"] += float(qty)
+            entry["total_amount"] += float(line_total)
+            grouped[category][subcategory]["sub_category_total_qty"] += qty
+            grouped[category][subcategory]["sub_category_total_amount"] += line_total
+            grand_total_qty += qty
+
+    report = []
+    for category, subcats in grouped.items():
+        cat_total_qty = Decimal("0")
+        cat_total_amount = Decimal("0")
+        subcategories_list = []
+        for subcat, data in subcats.items():
+            cat_total_qty += data["sub_category_total_qty"]
+            cat_total_amount += data["sub_category_total_amount"]
+            merged_items = list(data["items"].values()) + data["void_items"]
+            for item_row in merged_items:
+                qty = item_row.get("quantity") or 0
+                total_amt = item_row.get("total_amount") or 0
+                item_row["average_price"] = float(total_amt / qty) if qty else 0.0
+            subcategories_list.append(
+                {
+                    "name": subcat,
+                    "total_qty": float(data["sub_category_total_qty"]),
+                    "total_amount": float(data["sub_category_total_amount"]),
+                    "items": merged_items,
+                }
+            )
+        report.append(
             {
-                "category": name,
-                "total_qty": float(agg["total_qty"]),
-                "total_amount": float(agg["total_amount"]),
-                "subcategories": [],
+                "category": category,
+                "total_qty": float(cat_total_qty),
+                "total_amount": float(cat_total_amount),
+                "subcategories": subcategories_list,
             }
         )
     return jsonify(
         {
             "from": request.args.get("start_date"),
             "to": request.args.get("end_date"),
-            "report": item_rows if rows else [],
+            "report": report if rows else [],
             "grand_totals": {"total_amount": float(total_amount)},
         }
     )
@@ -1224,14 +1304,33 @@ def waiter_summary():
     tenant_id, error = _tenant_id_required()
     if error:
         return error
-    grouped = defaultdict(lambda: {"waiter_id": None, "waiter_name": None, "total_sales": 0.0, "is_shift_closed": False})
-    for row in OrderSummary.query.filter_by(tenant_id=tenant_id).all():
+    start_date_str = request.args.get("start_date")
+    end_date_str = request.args.get("end_date")
+    rows_query = OrderSummary.query.filter_by(tenant_id=tenant_id)
+    if start_date_str and end_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+            start_dt = datetime.combine(start_date, datetime.min.time())
+            end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+            rows_query = rows_query.filter(OrderSummary.created_at >= start_dt, OrderSummary.created_at < end_dt)
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
+
+    grouped = defaultdict(lambda: {"waiter_id": None, "waiter_name": None, "total_sales": 0.0, "is_shift_closed": False, "items_status": []})
+    grand_total = 0.0
+    for row in rows_query.all():
         key = row.source_user_name or "Unknown"
         entry = grouped[key]
         entry["waiter_id"] = key
         entry["waiter_name"] = key
-        entry["total_sales"] += float(row.total_amount or 0)
-    grand_total = sum((entry["total_sales"] for entry in grouped.values()), 0.0)
+        row_total = float(row.total_amount or 0)
+        is_void = row.status == "void"
+        entry["items_status"].append({"status": row.status, "amount": row_total, "is_voided": is_void})
+        if not is_void:
+            entry["total_sales"] += row_total
+            grand_total += row_total
+
     return jsonify({"report": list(grouped.values()), "grand_total": grand_total})
 
 
@@ -1241,17 +1340,57 @@ def waiter_details(waiter_id: str):
     tenant_id, error = _tenant_id_required()
     if error:
         return error
-    rows = OrderSummary.query.filter_by(tenant_id=tenant_id, source_user_name=waiter_id).order_by(OrderSummary.created_at.desc()).all()
+    start_date_str = request.args.get("start_date")
+    end_date_str = request.args.get("end_date")
+    rows_query = OrderSummary.query.filter_by(tenant_id=tenant_id, source_user_name=waiter_id)
+    if start_date_str and end_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+            start_dt = datetime.combine(start_date, datetime.min.time())
+            end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+            rows_query = rows_query.filter(OrderSummary.created_at >= start_dt, OrderSummary.created_at < end_dt)
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
+
+    rows = rows_query.order_by(OrderSummary.created_at.desc()).all()
+    item_map = defaultdict(lambda: {"quantity_sold": Decimal("0"), "total_amount": Decimal("0"), "is_voided": False})
+    menu_cache = {}
+    for row in rows:
+        for item in row.items_data or []:
+            is_voided = (item or {}).get("status") == "void"
+            if is_voided:
+                continue
+            menu_item_id = (item or {}).get("menu_item_id") or (item or {}).get("id")
+            cached_name = menu_cache.get(menu_item_id)
+            if cached_name is None and menu_item_id is not None:
+                menu_row = MenuItem.query.filter_by(id=menu_item_id, tenant_id=tenant_id).first()
+                cached_name = menu_row.name if menu_row else None
+                menu_cache[menu_item_id] = cached_name
+            name = (item or {}).get("name") or cached_name or (f"Item {menu_item_id}" if menu_item_id is not None else "Item")
+            qty = _decimal((item or {}).get("quantity"))
+            price = _decimal((item or {}).get("price"))
+            item_map[name]["quantity_sold"] += qty
+            item_map[name]["total_amount"] += qty * price
+
     details = [
         {
-            "item_name": f"Order #{row.source_order_id}",
-            "quantity_sold": 1,
-            "total_amount": float(row.total_amount or 0),
-            "is_voided": row.status == "void",
+            "item_name": name,
+            "quantity_sold": float(agg["quantity_sold"]),
+            "total_amount": float(agg["total_amount"]),
+            "is_voided": False,
         }
-        for row in rows
+        for name, agg in item_map.items()
     ]
-    return jsonify({"details": details})
+    return jsonify(
+        {
+            "waiter_id": waiter_id,
+            "from": start_date_str,
+            "to": end_date_str,
+            "grand_total": float(sum((agg["total_amount"] for agg in item_map.values()), Decimal("0"))),
+            "details": details,
+        }
+    )
 
 
 @compat_bp.post("/order-history/waiter/<waiter_id>/reopen-day")
