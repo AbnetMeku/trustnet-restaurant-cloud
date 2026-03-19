@@ -573,6 +573,7 @@ def _apply_sync_event(tenant_id: int, store_id: int, entity_type: str, payload: 
         summary.table_number = (payload or {}).get("table_number")
         summary.status = (payload or {}).get("status") or "pending"
         summary.total_amount = amount
+        summary.items_data = (payload or {}).get("items") or []
 
 
 def _apply_delete_event(tenant_id: int, store_id: int, entity_type: str, payload: dict, local_id: str):

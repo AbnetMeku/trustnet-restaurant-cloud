@@ -1059,7 +1059,17 @@ def order_history_raw():
             "created_at": row.created_at.isoformat(),
             "table": {"number": row.table_number or "-"},
             "user": {"username": row.source_user_name or "-"},
-            "items": [],
+            "items": [
+                {
+                    "id": item.get("id"),
+                    "menu_item_id": item.get("menu_item_id"),
+                    "name": item.get("name") or f"Item {item.get('menu_item_id') or item.get('id')}",
+                    "quantity": float(item.get("quantity") or 0),
+                    "price": float(item.get("price") or 0),
+                    "status": item.get("status"),
+                }
+                for item in (row.items_data or [])
+            ],
         }
         for row in rows
     ]
@@ -1105,12 +1115,25 @@ def order_history_summary_range():
     paid_amount = Decimal("0")
     closed_amount = Decimal("0")
     open_amount = Decimal("0")
+    total_items = 0.0
+    item_map = defaultdict(float)
     for row in rows:
         key = row.source_user_name or "Unknown"
         entry = waiter_summary[key]
         entry["waiterId"] = key
         entry["waiterName"] = key
         amount = float(row.total_amount or 0)
+        items = row.items_data or []
+        for item in items:
+            if (item or {}).get("status") == "void":
+                continue
+            qty = float((item or {}).get("quantity") or 0)
+            total_items += qty
+            name = (item or {}).get("name")
+            if not name:
+                menu_item_id = (item or {}).get("menu_item_id") or (item or {}).get("id")
+                name = f"Item {menu_item_id}" if menu_item_id is not None else "Item"
+            item_map[name] += qty
         if row.status == "paid":
             entry["paidOrders"] += 1
             entry["paidAmount"] += amount
@@ -1123,13 +1146,19 @@ def order_history_summary_range():
             entry["openOrders"] += 1
             entry["openAmount"] += amount
             open_amount += _decimal(row.total_amount)
+        entry["totalItems"] = entry.get("totalItems", 0.0) + sum(
+            float((item or {}).get("quantity") or 0)
+            for item in items
+            if (item or {}).get("status") != "void"
+        )
     return jsonify(
         {
             "paidAmount": float(paid_amount),
             "closedAmount": float(closed_amount),
             "openAmount": float(open_amount),
+            "totalItems": total_items,
             "waiterSummary": list(waiter_summary.values()),
-            "dailyItemsSummary": [],
+            "dailyItemsSummary": [{"name": name, "quantity": qty} for name, qty in item_map.items()],
         }
     )
 
