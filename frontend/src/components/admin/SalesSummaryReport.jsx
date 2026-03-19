@@ -195,49 +195,34 @@ export default function SalesSummaryReport({ darkMode }) {
       }
     };
 
-    pdf.setFontSize(16);
-    pdf.setTextColor(...PDF_THEME.title);
-    pdf.text(`Sales Summary: ${data.from} - ${data.to}`, margin, yPosition);
-    pdf.setLineWidth(1);
-    pdf.setDrawColor(...PDF_THEME.divider);
-    pdf.line(margin, yPosition + 5, pageWidth - margin, yPosition + 5);
-    yPosition += lineHeight * 2;
+    const safeText = (value, fallback = "") =>
+      value === null || value === undefined ? fallback : String(value);
+    const safeMoney = (value) => Number(value || 0).toFixed(2);
+    const safeQty = (value) => safeText(value ?? 0);
 
-    data.report.forEach((category) => {
+    const renderPlainTable = (tableData, headerLabel) => {
+      pdf.setFontSize(10);
+      pdf.setTextColor(...PDF_THEME.tableBodyText);
+
+      const header = headerLabel || "Item | VIP | Qty | Unit | Total";
       addNewPageIfNeeded(lineHeight);
-      pdf.setFontSize(14);
-      pdf.setTextColor(...PDF_THEME.category);
-      pdf.text(category.category, margin, yPosition);
-      yPosition += lineHeight + 10;
+      pdf.text(header, margin + 20, yPosition);
+      yPosition += lineHeight;
 
-      const subcategories = Array.isArray(category.subcategories) ? category.subcategories : [];
-      subcategories.forEach((subcat) => {
+      tableData.forEach((row) => {
         addNewPageIfNeeded(lineHeight);
-        pdf.setFontSize(12);
-        pdf.setTextColor(...PDF_THEME.subcategory);
-        pdf.text(subcat.name, margin + 20, yPosition);
-        yPosition += lineHeight + 5;
+        pdf.text(row.join(" | "), margin + 20, yPosition);
+        yPosition += lineHeight;
+      });
+    };
 
-        const items = Array.isArray(subcat.items) ? subcat.items : [];
-        const tableData = items.map((item) => [
-          item.name,
-          item.vip_status,
-          String(item.quantity),
-          Number(item.average_price || 0).toFixed(2),
-          Number(item.total_amount || 0).toFixed(2),
-        ]);
-        if (tableData.length === 0) {
-          tableData.push(["No items", "", "0", "0.00", "0.00"]);
-        }
+    const renderAutoTable = (tableData) => {
+      if (typeof autoTable !== "function") {
+        renderPlainTable(tableData);
+        return;
+      }
 
-        tableData.push([
-          `Subtotal for ${subcat.name}`,
-          "",
-          String(subcat.total_qty),
-          "",
-          Number(subcat.total_amount || 0).toFixed(2),
-        ]);
-
+      try {
         addNewPageIfNeeded(100);
         autoTable(pdf, {
           startY: yPosition,
@@ -280,15 +265,74 @@ export default function SalesSummaryReport({ darkMode }) {
         });
 
         yPosition = (pdf.lastAutoTable?.finalY || yPosition) + lineHeight;
+      } catch (err) {
+        renderPlainTable(tableData);
+        yPosition += lineHeight;
+      }
+    };
+
+    pdf.setFontSize(16);
+    pdf.setTextColor(...PDF_THEME.title);
+    pdf.text(
+      `Sales Summary: ${safeText(data.from, "-")} - ${safeText(data.to, "-")}`,
+      margin,
+      yPosition
+    );
+    pdf.setLineWidth(1);
+    pdf.setDrawColor(...PDF_THEME.divider);
+    pdf.line(margin, yPosition + 5, pageWidth - margin, yPosition + 5);
+    yPosition += lineHeight * 2;
+
+    const reportCategories = Array.isArray(data.report) ? data.report : [];
+    reportCategories.forEach((categoryRaw) => {
+      const category = categoryRaw || {};
+      const categoryName = safeText(category.category, "Uncategorized");
+      addNewPageIfNeeded(lineHeight);
+      pdf.setFontSize(14);
+      pdf.setTextColor(...PDF_THEME.category);
+      pdf.text(categoryName, margin, yPosition);
+      yPosition += lineHeight + 10;
+
+      const subcategories = Array.isArray(category.subcategories) ? category.subcategories : [];
+      subcategories.forEach((subcatRaw) => {
+        const subcat = subcatRaw || {};
+        const subcatName = safeText(subcat.name, "Uncategorized");
+        addNewPageIfNeeded(lineHeight);
+        pdf.setFontSize(12);
+        pdf.setTextColor(...PDF_THEME.subcategory);
+        pdf.text(subcatName, margin + 20, yPosition);
+        yPosition += lineHeight + 5;
+
+        const items = Array.isArray(subcat.items) ? subcat.items : [];
+        const tableData = items.map((item) => [
+          safeText(item?.name, "Unknown"),
+          safeText(item?.vip_status, ""),
+          safeQty(item?.quantity),
+          safeMoney(item?.average_price),
+          safeMoney(item?.total_amount),
+        ]);
+        if (tableData.length === 0) {
+          tableData.push(["No items", "", "0", "0.00", "0.00"]);
+        }
+
+        tableData.push([
+          `Subtotal for ${subcatName}`,
+          "",
+          safeQty(subcat.total_qty),
+          "",
+          safeMoney(subcat.total_amount),
+        ]);
+
+        renderAutoTable(tableData);
       });
 
       addNewPageIfNeeded(lineHeight);
       pdf.setFontSize(12);
       pdf.setTextColor(...PDF_THEME.category);
       pdf.text(
-        `Total for ${category.category}: Quantity: ${category.total_qty} | Amount: ${Number(
-          category.total_amount || 0
-        ).toFixed(2)}`,
+        `Total for ${categoryName}: Quantity: ${safeQty(category.total_qty)} | Amount: ${safeMoney(
+          category.total_amount
+        )}`,
         margin + 10,
         yPosition
       );
