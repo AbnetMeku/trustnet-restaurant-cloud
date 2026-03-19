@@ -200,77 +200,6 @@ export default function SalesSummaryReport({ darkMode }) {
     const safeMoney = (value) => Number(value || 0).toFixed(2);
     const safeQty = (value) => safeText(value ?? 0);
 
-    const renderPlainTable = (tableData, headerLabel) => {
-      pdf.setFontSize(10);
-      pdf.setTextColor(...PDF_THEME.tableBodyText);
-
-      const header = headerLabel || "Item | VIP | Qty | Unit | Total";
-      addNewPageIfNeeded(lineHeight);
-      pdf.text(header, margin + 20, yPosition);
-      yPosition += lineHeight;
-
-      tableData.forEach((row) => {
-        addNewPageIfNeeded(lineHeight);
-        pdf.text(row.join(" | "), margin + 20, yPosition);
-        yPosition += lineHeight;
-      });
-    };
-
-    const renderAutoTable = (tableData) => {
-      if (typeof autoTable !== "function") {
-        renderPlainTable(tableData);
-        return;
-      }
-
-      try {
-        addNewPageIfNeeded(100);
-        autoTable(pdf, {
-          startY: yPosition,
-          head: [["Item", "VIP Status", "Quantity", "Unit Price", "Total"]],
-          body: tableData,
-          theme: "grid",
-          headStyles: {
-            fillColor: PDF_THEME.tableHeadBg,
-            textColor: PDF_THEME.tableHeadText,
-            font: hasEthiopicFont ? "NotoSerifEthiopic" : "helvetica",
-            fontStyle: "normal",
-          },
-          bodyStyles: {
-            textColor: PDF_THEME.tableBodyText,
-            font: hasEthiopicFont ? "NotoSerifEthiopic" : "helvetica",
-            fontStyle: "normal",
-          },
-          alternateRowStyles: {
-            fillColor: PDF_THEME.tableAltRow,
-          },
-          margin: { left: margin + 20, right: margin },
-          styles: {
-            fontSize: 10,
-            font: hasEthiopicFont ? "NotoSerifEthiopic" : "helvetica",
-            cellPadding: 8,
-          },
-          columnStyles: {
-            0: { cellWidth: "auto" },
-            1: { cellWidth: 80 },
-            2: { cellWidth: 60, halign: "right" },
-            3: { cellWidth: 60, halign: "right" },
-            4: { cellWidth: 80, halign: "right" },
-          },
-          didParseCell: (hookData) => {
-            if (hookData.section !== "body") return;
-            if (hookData.row.index !== tableData.length - 1) return;
-            hookData.cell.styles.fillColor = PDF_THEME.subtotalRow;
-            hookData.cell.styles.fontStyle = "bold";
-          },
-        });
-
-        yPosition = (pdf.lastAutoTable?.finalY || yPosition) + lineHeight;
-      } catch (err) {
-        renderPlainTable(tableData);
-        yPosition += lineHeight;
-      }
-    };
-
     pdf.setFontSize(16);
     pdf.setTextColor(...PDF_THEME.title);
     pdf.text(
@@ -323,7 +252,48 @@ export default function SalesSummaryReport({ darkMode }) {
           safeMoney(subcat.total_amount),
         ]);
 
-        renderAutoTable(tableData);
+        addNewPageIfNeeded(100);
+        autoTable(pdf, {
+          startY: yPosition,
+          head: [["Item", "VIP Status", "Quantity", "Unit Price", "Total"]],
+          body: tableData,
+          theme: "grid",
+          headStyles: {
+            fillColor: PDF_THEME.tableHeadBg,
+            textColor: PDF_THEME.tableHeadText,
+            font: hasEthiopicFont ? "NotoSerifEthiopic" : "helvetica",
+            fontStyle: "normal",
+          },
+          bodyStyles: {
+            textColor: PDF_THEME.tableBodyText,
+            font: hasEthiopicFont ? "NotoSerifEthiopic" : "helvetica",
+            fontStyle: "normal",
+          },
+          alternateRowStyles: {
+            fillColor: PDF_THEME.tableAltRow,
+          },
+          margin: { left: margin + 20, right: margin },
+          styles: {
+            fontSize: 10,
+            font: hasEthiopicFont ? "NotoSerifEthiopic" : "helvetica",
+            cellPadding: 8,
+          },
+          columnStyles: {
+            0: { cellWidth: "auto" },
+            1: { cellWidth: 80 },
+            2: { cellWidth: 60, halign: "right" },
+            3: { cellWidth: 60, halign: "right" },
+            4: { cellWidth: 80, halign: "right" },
+          },
+          didParseCell: (hookData) => {
+            if (hookData.section !== "body") return;
+            if (hookData.row.index !== tableData.length - 1) return;
+            hookData.cell.styles.fillColor = PDF_THEME.subtotalRow;
+            hookData.cell.styles.fontStyle = "bold";
+          },
+        });
+
+        yPosition = (pdf.lastAutoTable?.finalY || yPosition) + lineHeight;
       });
 
       addNewPageIfNeeded(lineHeight);
