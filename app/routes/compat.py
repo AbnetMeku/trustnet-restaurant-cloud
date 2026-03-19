@@ -1169,40 +1169,50 @@ def sales_summary():
     tenant_id, error = _tenant_id_required()
     if error:
         return error
-    rows = OrderSummary.query.filter_by(tenant_id=tenant_id).all()
+    start_date_str = request.args.get("start_date")
+    end_date_str = request.args.get("end_date")
+    rows_query = OrderSummary.query.filter_by(tenant_id=tenant_id)
+    if start_date_str and end_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+            start_dt = datetime.combine(start_date, datetime.min.time())
+            end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+            rows_query = rows_query.filter(OrderSummary.created_at >= start_dt, OrderSummary.created_at < end_dt)
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
+
+    rows = rows_query.all()
     total_amount = sum((_decimal(row.total_amount) for row in rows), Decimal("0"))
+    item_map = defaultdict(lambda: {"total_qty": Decimal("0"), "total_amount": Decimal("0")})
+    for row in rows:
+        for item in row.items_data or []:
+            if (item or {}).get("status") == "void":
+                continue
+            name = (item or {}).get("name")
+            if not name:
+                menu_item_id = (item or {}).get("menu_item_id") or (item or {}).get("id")
+                name = f"Item {menu_item_id}" if menu_item_id is not None else "Item"
+            qty = _decimal((item or {}).get("quantity"))
+            price = _decimal((item or {}).get("price"))
+            item_map[name]["total_qty"] += qty
+            item_map[name]["total_amount"] += qty * price
+
+    item_rows = []
+    for name, agg in item_map.items():
+        item_rows.append(
+            {
+                "category": name,
+                "total_qty": float(agg["total_qty"]),
+                "total_amount": float(agg["total_amount"]),
+                "subcategories": [],
+            }
+        )
     return jsonify(
         {
             "from": request.args.get("start_date"),
             "to": request.args.get("end_date"),
-            "report": [
-                {
-                    "category": "Orders",
-                    "total_qty": len(rows),
-                    "total_amount": float(total_amount),
-                    "subcategories": [
-                        {
-                            "name": "Synced Orders",
-                            "total_qty": len(rows),
-                            "total_amount": float(total_amount),
-                            "items": [
-                                {
-                                    "menu_item_id": row.id,
-                                    "name": f"Order #{row.source_order_id}",
-                                    "vip_status": "N/A",
-                                    "quantity": 1,
-                                    "average_price": float(row.total_amount or 0),
-                                    "total_amount": float(row.total_amount or 0),
-                                    "status": row.status,
-                                }
-                                for row in rows
-                            ],
-                        }
-                    ],
-                }
-            ]
-            if rows
-            else [],
+            "report": item_rows if rows else [],
             "grand_totals": {"total_amount": float(total_amount)},
         }
     )

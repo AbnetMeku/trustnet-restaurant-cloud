@@ -574,6 +574,12 @@ def _apply_sync_event(tenant_id: int, store_id: int, entity_type: str, payload: 
         summary.status = (payload or {}).get("status") or "pending"
         summary.total_amount = amount
         summary.items_data = (payload or {}).get("items") or []
+        created_at = _parse_datetime((payload or {}).get("created_at"))
+        updated_at = _parse_datetime((payload or {}).get("updated_at"))
+        if created_at:
+            summary.created_at = created_at
+        if updated_at:
+            summary.updated_at = updated_at
 
 
 def _apply_delete_event(tenant_id: int, store_id: int, entity_type: str, payload: dict, local_id: str):
