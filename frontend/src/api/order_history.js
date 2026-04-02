@@ -53,3 +53,26 @@ export const closeWaiterDay = async (token) => {
   return res.data;
 };
 
+export const fetchWaiterDayCloseStatusForWaiter = async (token, waiterId) => {
+  const res = await axiosInstance.get(`/order-history/waiter/${waiterId}/day-close-status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data;
+};
+
+export const closeWaiterDayForWaiter = async (token, waiterId) => {
+  const res = await axiosInstance.post(
+    `/order-history/waiter/${waiterId}/close-day`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return res.data;
+};
+
+export const clearOrderHistoryRange = async (token, payload) => {
+  const res = await axiosInstance.delete("/order-history/clear-range", {
+    data: payload,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.data;
+};
