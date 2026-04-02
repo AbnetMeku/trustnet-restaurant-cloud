@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import {
   FaTable,
   FaStore,
@@ -10,7 +10,6 @@ import {
   FaPrint,
   FaFileAlt,
   FaBoxes,
-  FaPalette,
   FaSun,
   FaMoon,
   FaChevronLeft,
@@ -31,7 +30,6 @@ import WaiterSummaryReport from "@/components/admin/WaiterSummaryReport";
 import OverView from "@/components/admin/OverView";
 import OrderTracker from "@/components/admin/OrderTracker";
 import PrintJobs from "@/components/admin/PrintJobs";
-import BrandingManagement from "@/components/admin/BrandingManagement";
 import { useBranding } from "@/hooks/useBranding";
 
 export default function AdminDashboard() {
@@ -80,7 +78,7 @@ export default function AdminDashboard() {
 
   const isManager = user?.role === "manager";
   const restrictedIds = isManager
-    ? new Set(["reports", "waiter-summary", "stations", "settings"])
+    ? new Set(["reports", "waiter-summary", "stations"])
     : new Set();
 
   const menuSections = [
@@ -136,11 +134,6 @@ export default function AdminDashboard() {
           id: "stations",
           icon: FaStore,
           label: "Stations",
-        },
-        {
-          id: "settings",
-          icon: FaPalette,
-          label: "Settings",
         },
       ],
     },
@@ -233,6 +226,7 @@ export default function AdminDashboard() {
                     key={item.id}
                     className={`admin-nav-item ${active === item.id ? "is-active" : ""}`}
                     onClick={() => handleSelect(item.id)}
+                    data-testid={`admin-nav-${item.id}`}
                   >
                     <item.icon className="admin-nav-icon" />
                     {sidebarOpen && (
@@ -250,7 +244,7 @@ export default function AdminDashboard() {
 
         {isMobile && sidebarOpen && (
           <div
-            className="fixed inset-0 bg-black/50 z-20 md:hidden"
+            className="fixed inset-0 bg-slate-950/65 backdrop-blur-sm z-20 md:hidden"
             onClick={toggleSidebar}
           />
         )}
@@ -287,62 +281,56 @@ export default function AdminDashboard() {
 
           <main className="admin-main">
             {active === "overview" && (
-              <Card className="admin-card p-5 md:p-6 w-full">
+              <Card className="admin-card p-5 md:p-6 w-full" data-testid="admin-panel-overview">
                 <OverView />
               </Card>
             )}
 
             {active === "users" && (
-              <Card className="admin-card p-5 md:p-6 w-full">
+              <Card className="admin-card p-5 md:p-6 w-full" data-testid="admin-panel-users">
                 <UserManagement />
               </Card>
             )}
 
             {active === "tables" && (
-              <Card className="admin-card p-5 md:p-6 w-full">
+              <Card className="admin-card p-5 md:p-6 w-full" data-testid="admin-panel-tables">
                 <TableManagement />
               </Card>
             )}
 
             {active === "stations" && (
-              <Card className="admin-card p-5 md:p-6 w-full">
+              <Card className="admin-card p-5 md:p-6 w-full" data-testid="admin-panel-stations">
                 <StationManagement />
               </Card>
             )}
 
             {active === "menu" && (
-              <Card className="admin-card p-5 md:p-6 w-full">
+              <Card className="admin-card p-5 md:p-6 w-full" data-testid="admin-panel-menu">
                 <MenuManagement />
               </Card>
             )}
 
             {active === "reports" && (
-              <Card className="admin-card p-5 md:p-6 w-full overflow-auto max-h-[82vh]">
+              <Card className="admin-card p-5 md:p-6 w-full overflow-auto max-h-[82vh]" data-testid="admin-panel-reports">
                 <SalesSummaryReport darkMode={darkMode} />
               </Card>
             )}
 
             {active === "waiter-summary" && (
-              <Card className="admin-card p-5 md:p-6 w-full overflow-auto max-h-[82vh]">
+              <Card className="admin-card p-5 md:p-6 w-full overflow-auto max-h-[82vh]" data-testid="admin-panel-waiter-summary">
                 <WaiterSummaryReport />
               </Card>
             )}
 
             {active === "order" && (
-              <Card className="admin-card p-5 md:p-6 w-full overflow-auto max-h-[82vh]">
+              <Card className="admin-card p-5 md:p-6 w-full overflow-auto max-h-[82vh]" data-testid="admin-panel-order">
                 <OrderTracker />
               </Card>
             )}
 
             {active === "print" && (
-              <Card className="admin-card p-5 md:p-6 w-full overflow-auto max-h-[82vh]">
+              <Card className="admin-card p-5 md:p-6 w-full overflow-auto max-h-[82vh]" data-testid="admin-panel-print">
                 <PrintJobs />
-              </Card>
-            )}
-
-            {active === "settings" && (
-              <Card className="admin-card p-5 md:p-6 w-full overflow-auto max-h-[82vh]">
-                <BrandingManagement />
               </Card>
             )}
           </main>
@@ -351,3 +339,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+

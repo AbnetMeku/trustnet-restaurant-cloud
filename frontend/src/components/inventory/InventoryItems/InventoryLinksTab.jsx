@@ -35,7 +35,7 @@ import { getMenuItems } from "@/api/menu_item";
 const servingTypeOptions = [
   { value: "shot", label: "Shot" },
   { value: "bottle", label: "Bottle" },
-  { value: "custom_ml", label: "Custom ml" },
+  { value: "custom_ml", label: "Custom Shots" },
 ];
 
 const selectStyles = {
@@ -62,21 +62,22 @@ const selectStyles = {
 };
 
 function formatServingRule(group, inventoryItem) {
+  const shotsPerBottle = Number(inventoryItem?.shots_per_bottle || group?.shots_per_bottle || 0);
   if (group.serving_type === "shot") {
-    const shotMl = inventoryItem?.default_shot_ml || 0;
     const shotLabel = Number(group.serving_value) === 1 ? "shot" : "shots";
-    return `${group.serving_value} ${shotLabel} (${Number(shotMl) * Number(group.serving_value)} ml)`;
+    return `${group.serving_value} ${shotLabel}`;
   }
   if (group.serving_type === "bottle") {
     const bottleLabel = Number(group.serving_value) === 1 ? "bottle" : "bottles";
-    return `${group.serving_value} ${bottleLabel}`;
+    const shotSuffix = shotsPerBottle > 0 ? ` (${Number(group.serving_value) * shotsPerBottle} shots)` : "";
+    return `${group.serving_value} ${bottleLabel}${shotSuffix}`;
   }
-  return `${group.serving_value} ml`;
+  return `${group.serving_value} shots`;
 }
 
 function defaultServingValue(servingType, inventoryItem) {
   if (servingType === "custom_ml") {
-    return Number(inventoryItem?.default_shot_ml || 50);
+    return 1;
   }
   return 1;
 }
@@ -125,16 +126,17 @@ export default function InventoryLinksTab() {
       );
 
       const allLinks = groupedByInventory.flatMap(({ item, groups }) =>
-        groups.map((group) => ({
-          inventory_item_id: item.id,
-          inventory_item_name: item.name,
-          container_size_ml: item.container_size_ml,
-          default_shot_ml: item.default_shot_ml,
-          serving_type: group.serving_type,
-          serving_value: Number(group.serving_value),
-          deduction_ratio: Number(group.deduction_ratio || 0),
-          menu_items: group.menu_items,
-          menu_item_ids: group.menu_item_ids,
+          groups.map((group) => ({
+            inventory_item_id: item.id,
+            inventory_item_name: item.name,
+            container_size_ml: item.container_size_ml,
+            default_shot_ml: item.default_shot_ml,
+            shots_per_bottle: item.shots_per_bottle,
+            serving_type: group.serving_type,
+            serving_value: Number(group.serving_value),
+            deduction_ratio: Number(group.deduction_ratio || 0),
+            menu_items: group.menu_items,
+            menu_item_ids: group.menu_item_ids,
           ids: group.ids,
         }))
       );
@@ -415,7 +417,7 @@ export default function InventoryLinksTab() {
               <DialogHeader>
                 <DialogTitle>Create Serving Rule</DialogTitle>
                 <DialogDescription>
-                  Link menu items to an inventory bottle using shot, bottle, or custom ml deduction.
+                  Link menu items to an inventory item using shot, bottle, or custom shots deduction.
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3">
@@ -467,7 +469,7 @@ export default function InventoryLinksTab() {
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium">
-                      {servingType === "custom_ml" ? "Custom ml" : `Number of ${servingType}s`}
+                      {servingType === "custom_ml" ? "Custom shots" : `Number of ${servingType}s`}
                     </label>
                     <Input
                       type="number"
@@ -481,12 +483,11 @@ export default function InventoryLinksTab() {
 
                 {selectedInventoryConfig && (
                   <div className="rounded border bg-muted/30 p-3 text-xs text-muted-foreground">
-                    <p>
-                      Bottle size: {selectedInventoryConfig.container_size_ml} ml
-                    </p>
-                    <p>
-                      Default shot: {selectedInventoryConfig.default_shot_ml} ml
-                    </p>
+                    {Number(selectedInventoryConfig.shots_per_bottle || 0) > 0 ? (
+                      <p>Shots per bottle: {Number(selectedInventoryConfig.shots_per_bottle).toFixed(2)}</p>
+                    ) : (
+                      <p>Unit: {selectedInventoryConfig.unit || "N/A"}</p>
+                    )}
                     <p>
                       This rule deducts {formatServingRule({ serving_type: servingType, serving_value: Number(servingValue) }, selectedInventoryConfig)}.
                     </p>
@@ -568,7 +569,7 @@ export default function InventoryLinksTab() {
                 <div>
                   <label className="mb-1 block text-sm font-medium">
                     {editingGroup.serving_type === "custom_ml"
-                      ? "Custom ml"
+                      ? "Custom shots"
                       : `Number of ${editingGroup.serving_type}s`}
                   </label>
                   <Input
@@ -607,7 +608,7 @@ export default function InventoryLinksTab() {
                 <th className="px-4 py-3 text-left">Inventory Item</th>
                 <th className="px-4 py-3 text-left">Menu Items</th>
                 <th className="px-4 py-3 text-left">Serving Rule</th>
-                <th className="px-4 py-3 text-left">Bottle / Shot</th>
+                <th className="px-4 py-3 text-left">Shots/Bottle</th>
                 <th className="px-4 py-3 text-left">Actions</th>
               </tr>
             </thead>
@@ -644,7 +645,7 @@ export default function InventoryLinksTab() {
                       {formatServingRule(group, group)}
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {group.container_size_ml} ml bottle / {group.default_shot_ml} ml shot
+                      {Number(group.shots_per_bottle || 0) > 0 ? `${Number(group.shots_per_bottle).toFixed(2)} shots` : "-"}
                     </td>
                     <td className="px-4 py-3 space-x-2">
                       <Button variant="outline" size="sm" onClick={() => openEditModal(group)}>

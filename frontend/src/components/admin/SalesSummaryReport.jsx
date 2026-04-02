@@ -195,61 +195,42 @@ export default function SalesSummaryReport({ darkMode }) {
       }
     };
 
-    const safeText = (value, fallback = "") =>
-      value === null || value === undefined ? fallback : String(value);
-    const safeMoney = (value) => Number(value || 0).toFixed(2);
-    const safeQty = (value) => safeText(value ?? 0);
-
     pdf.setFontSize(16);
     pdf.setTextColor(...PDF_THEME.title);
-    pdf.text(
-      `Sales Summary: ${safeText(data.from, "-")} - ${safeText(data.to, "-")}`,
-      margin,
-      yPosition
-    );
+    pdf.text(`Sales Summary: ${data.from} - ${data.to}`, margin, yPosition);
     pdf.setLineWidth(1);
     pdf.setDrawColor(...PDF_THEME.divider);
     pdf.line(margin, yPosition + 5, pageWidth - margin, yPosition + 5);
     yPosition += lineHeight * 2;
 
-    const reportCategories = Array.isArray(data.report) ? data.report : [];
-    reportCategories.forEach((categoryRaw) => {
-      const category = categoryRaw || {};
-      const categoryName = safeText(category.category, "Uncategorized");
+    data.report.forEach((category) => {
       addNewPageIfNeeded(lineHeight);
       pdf.setFontSize(14);
       pdf.setTextColor(...PDF_THEME.category);
-      pdf.text(categoryName, margin, yPosition);
+      pdf.text(category.category, margin, yPosition);
       yPosition += lineHeight + 10;
 
-      const subcategories = Array.isArray(category.subcategories) ? category.subcategories : [];
-      subcategories.forEach((subcatRaw) => {
-        const subcat = subcatRaw || {};
-        const subcatName = safeText(subcat.name, "Uncategorized");
+      category.subcategories.forEach((subcat) => {
         addNewPageIfNeeded(lineHeight);
         pdf.setFontSize(12);
         pdf.setTextColor(...PDF_THEME.subcategory);
-        pdf.text(subcatName, margin + 20, yPosition);
+        pdf.text(subcat.name, margin + 20, yPosition);
         yPosition += lineHeight + 5;
 
-        const items = Array.isArray(subcat.items) ? subcat.items : [];
-        const tableData = items.map((item) => [
-          safeText(item?.name, "Unknown"),
-          safeText(item?.vip_status, ""),
-          safeQty(item?.quantity),
-          safeMoney(item?.average_price),
-          safeMoney(item?.total_amount),
+        const tableData = subcat.items.map((item) => [
+          item.name,
+          item.vip_status,
+          String(item.quantity),
+          Number(item.average_price || 0).toFixed(2),
+          Number(item.total_amount || 0).toFixed(2),
         ]);
-        if (tableData.length === 0) {
-          tableData.push(["No items", "", "0", "0.00", "0.00"]);
-        }
 
         tableData.push([
-          `Subtotal for ${subcatName}`,
+          `Subtotal for ${subcat.name}`,
           "",
-          safeQty(subcat.total_qty),
+          String(subcat.total_qty),
           "",
-          safeMoney(subcat.total_amount),
+          Number(subcat.total_amount || 0).toFixed(2),
         ]);
 
         addNewPageIfNeeded(100);
@@ -300,9 +281,9 @@ export default function SalesSummaryReport({ darkMode }) {
       pdf.setFontSize(12);
       pdf.setTextColor(...PDF_THEME.category);
       pdf.text(
-        `Total for ${categoryName}: Quantity: ${safeQty(category.total_qty)} | Amount: ${safeMoney(
-          category.total_amount
-        )}`,
+        `Total for ${category.category}: Quantity: ${category.total_qty} | Amount: ${Number(
+          category.total_amount || 0
+        ).toFixed(2)}`,
         margin + 10,
         yPosition
       );

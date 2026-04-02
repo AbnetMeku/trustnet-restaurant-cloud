@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import CloudSettings from "@/components/admin/CloudSettings";
 import {
   Select,
   SelectContent,
@@ -17,12 +18,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DEFAULT_BRANDING,
   getBrandingSettings,
   updateBrandingSettings,
   uploadBrandingAsset,
 } from "@/api/branding";
 import { getSubcategories } from "@/api/subcategories";
+import { clearOrderHistoryRange } from "@/api/order_history";
 import { getApiErrorMessage } from "@/lib/apiError";
 
 const DEFAULT_FORM = {
@@ -31,24 +43,27 @@ const DEFAULT_FORM = {
   business_day_start_time: "06:00",
   print_preview_enabled: false,
   kds_mark_unavailable_enabled: false,
+  low_power_mode_enabled: true,
   kitchen_tag_subcategory_ids: [],
 };
-
-const CUSTOM_BRANDING_DISABLED_ENV = String(import.meta.env.VITE_DISABLE_CUSTOM_BRANDING ?? "true").toLowerCase() !== "false";
 
 export default function BrandingManagement() {
   const { user, authToken } = useAuth();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingHistory, setDeletingHistory] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingBackground, setUploadingBackground] = useState(false);
-  const [brandingLocked, setBrandingLocked] = useState(CUSTOM_BRANDING_DISABLED_ENV);
   const [activeTab, setActiveTab] = useState("branding");
   const [kitchenTagEnabled, setKitchenTagEnabled] = useState(false);
   const [subcategories, setSubcategories] = useState([]);
   const [form, setForm] = useState(DEFAULT_FORM);
   const [preview, setPreview] = useState(DEFAULT_BRANDING);
-  const allowBrandAssets = !brandingLocked || user?.cloud_role === "super_admin";
+  const [clearRange, setClearRange] = useState({
+    start_date: "",
+    end_date: "",
+  });
 
   useEffect(() => {
     const load = async () => {
@@ -71,11 +86,11 @@ export default function BrandingManagement() {
           business_day_start_time: settings.business_day_start_time || "06:00",
           print_preview_enabled: Boolean(settings.print_preview_enabled),
           kds_mark_unavailable_enabled: Boolean(settings.kds_mark_unavailable_enabled),
+          low_power_mode_enabled: settings.low_power_mode_enabled !== false,
           kitchen_tag_subcategory_ids: selectedIds,
         });
         setKitchenTagEnabled(selectedIds.length > 0);
         setPreview(settings);
-        setBrandingLocked(CUSTOM_BRANDING_DISABLED_ENV || Boolean(settings.custom_branding_locked));
       } catch (error) {
         toast.error(getApiErrorMessage(error, "Failed to load settings. Please refresh and try again."));
       } finally {
@@ -85,12 +100,6 @@ export default function BrandingManagement() {
 
     load();
   }, [authToken]);
-
-  useEffect(() => {
-    if (!allowBrandAssets && activeTab === "branding") {
-      setActiveTab("operations");
-    }
-  }, [allowBrandAssets, activeTab]);
 
   const kitchenTagSummary = Array.isArray(preview.kitchen_tag_subcategory_names) && preview.kitchen_tag_subcategory_names.length > 0
     ? preview.kitchen_tag_subcategory_names.join(", ")
@@ -172,29 +181,27 @@ export default function BrandingManagement() {
       business_day_start_time: data.business_day_start_time || "06:00",
       print_preview_enabled: Boolean(data.print_preview_enabled),
       kds_mark_unavailable_enabled: Boolean(data.kds_mark_unavailable_enabled),
+      low_power_mode_enabled: data.low_power_mode_enabled !== false,
       kitchen_tag_subcategory_ids: nextIds,
     });
     setKitchenTagEnabled(nextIds.length > 0);
     setPreview(data);
-    setBrandingLocked(CUSTOM_BRANDING_DISABLED_ENV || Boolean(data.custom_branding_locked));
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const payload = {
+      const data = await updateBrandingSettings({
+        logo_url: form.logo_url,
+        background_url: form.background_url,
         business_day_start_time: form.business_day_start_time,
         print_preview_enabled: Boolean(form.print_preview_enabled),
         kds_mark_unavailable_enabled: Boolean(form.kds_mark_unavailable_enabled),
+        low_power_mode_enabled: Boolean(form.low_power_mode_enabled),
         kitchen_tag_category_id: null,
         kitchen_tag_subcategory_id: null,
         kitchen_tag_subcategory_ids: kitchenTagEnabled ? form.kitchen_tag_subcategory_ids : [],
-      };
-      if (allowBrandAssets) {
-        payload.logo_url = form.logo_url;
-        payload.background_url = form.background_url;
-      }
-      const data = await updateBrandingSettings(payload);
+      });
       applySettingsToState(data);
       toast.success("Settings updated successfully");
     } catch (error) {
@@ -207,19 +214,17 @@ export default function BrandingManagement() {
   const handleResetDefaults = async () => {
     setSaving(true);
     try {
-      const payload = {
+      const data = await updateBrandingSettings({
+        logo_url: "",
+        background_url: "",
         business_day_start_time: "06:00",
         print_preview_enabled: false,
         kds_mark_unavailable_enabled: false,
+        low_power_mode_enabled: true,
         kitchen_tag_category_id: null,
         kitchen_tag_subcategory_id: null,
         kitchen_tag_subcategory_ids: [],
-      };
-      if (allowBrandAssets) {
-        payload.logo_url = "";
-        payload.background_url = "";
-      }
-      const data = await updateBrandingSettings(payload);
+      });
       applySettingsToState(data);
       toast.success("Settings reset to defaults");
     } catch (error) {
@@ -230,10 +235,6 @@ export default function BrandingManagement() {
   };
 
   const handleUpload = async (assetType, file) => {
-    if (!allowBrandAssets) {
-      toast.error("Custom branding is centrally managed for this tenant.");
-      return;
-    }
     if (!file) return;
     const maxSizeBytes = 5 * 1024 * 1024;
     const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
@@ -256,6 +257,46 @@ export default function BrandingManagement() {
       toast.error(getApiErrorMessage(error, `Failed to upload ${assetType}. Check file type/size and try again.`));
     } finally {
       setLoadingState(false);
+    }
+  };
+
+  const canClearHistory =
+    user?.role === "admin" &&
+    Boolean(clearRange.start_date) &&
+    Boolean(clearRange.end_date) &&
+    !deletingHistory;
+
+  const openClearHistoryConfirmation = () => {
+    if (user?.role !== "admin") {
+      toast.error("Only admins can clear order history.");
+      return;
+    }
+    if (!clearRange.start_date || !clearRange.end_date) {
+      toast.error("Select both start and end dates first.");
+      return;
+    }
+    if (clearRange.start_date > clearRange.end_date) {
+      toast.error("Start date cannot be after end date.");
+      return;
+    }
+    setConfirmOpen(true);
+  };
+
+  const handleClearHistory = async () => {
+    setDeletingHistory(true);
+    try {
+      const result = await clearOrderHistoryRange(authToken, clearRange);
+      toast.success(
+        result.deleted_orders
+          ? `Cleared ${result.deleted_orders} order(s) from history.`
+          : "No order history found in the selected range."
+      );
+      setConfirmOpen(false);
+      setClearRange({ start_date: "", end_date: "" });
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Failed to clear order history."));
+    } finally {
+      setDeletingHistory(false);
     }
   };
 
@@ -287,19 +328,30 @@ export default function BrandingManagement() {
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <Tabs value={activeTab} onValueChange={setActiveTab}>
-                {allowBrandAssets ? (
-                  <TabsList className="bg-white/15 text-white">
-                    <TabsTrigger value="branding" className="data-[state=active]:bg-white data-[state=active]:text-slate-950">
-                      Branding
-                    </TabsTrigger>
-                    <TabsTrigger value="operations" className="data-[state=active]:bg-white data-[state=active]:text-slate-950">
-                      Operations
-                    </TabsTrigger>
-                  </TabsList>
-                ) : (
-                  <div className="rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white/90">Operations</div>
-                )}
-              </Tabs>
+              <TabsList className="bg-white/15 text-white">
+                <TabsTrigger
+                  value="branding"
+                  className="data-[state=active]:bg-white data-[state=active]:text-slate-950"
+                  data-testid="settings-tab-branding"
+                >
+                  Branding
+                </TabsTrigger>
+                <TabsTrigger
+                  value="operations"
+                  className="data-[state=active]:bg-white data-[state=active]:text-slate-950"
+                  data-testid="settings-tab-operations"
+                >
+                  Operations
+                </TabsTrigger>
+                <TabsTrigger
+                  value="license"
+                  className="data-[state=active]:bg-white data-[state=active]:text-slate-950"
+                  data-testid="settings-tab-license"
+                >
+                  License
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
               <Button
                 variant="outline"
                 onClick={handleResetDefaults}
@@ -309,18 +361,12 @@ export default function BrandingManagement() {
                 Reset to Default
               </Button>
             </div>
-            {!allowBrandAssets && (
-              <p className="text-xs font-medium text-amber-200">
-                Custom branding is centrally managed for hosted tenants. Operations settings remain available below.
-              </p>
-            )}
           </div>
         </div>
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-0">
-        {allowBrandAssets && (
-          <TabsContent value="branding" className="mt-0">
+        <TabsContent value="branding" className="mt-0" data-testid="settings-content-branding">
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <Card className="admin-card p-4 space-y-4 backdrop-blur-sm">
               <div>
@@ -401,15 +447,59 @@ export default function BrandingManagement() {
             </Card>
           </div>
         </TabsContent>
-        )}
 
-        <TabsContent value="operations" className="mt-0">
+        <TabsContent value="operations" className="mt-0" data-testid="settings-content-operations">
           <div className="space-y-4">
-            {!allowBrandAssets && (
-              <Card className="admin-card border border-amber-400/50 bg-amber-50/20 p-4 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-                Custom branding updates (logos and images) are disabled in the TrustNet Cloud tenant portal. Please contact the super admin team if you need to request a change.
+            {user?.role === "admin" && (
+              <Card className="admin-card space-y-4 border border-red-200/80 p-4 backdrop-blur-sm dark:border-red-900/70">
+                <div className="space-y-1">
+                  <h4 className="font-medium text-red-700 dark:text-red-400">Clear Order History</h4>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    Permanently deletes orders, order items, and print jobs inside the selected business-day date range.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="clear-history-start-date">Start Date</Label>
+                    <Input
+                      id="clear-history-start-date"
+                      type="date"
+                      value={clearRange.start_date}
+                      onChange={(e) =>
+                        setClearRange((prev) => ({
+                          ...prev,
+                          start_date: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="clear-history-end-date">End Date</Label>
+                    <Input
+                      id="clear-history-end-date"
+                      type="date"
+                      value={clearRange.end_date}
+                      onChange={(e) =>
+                        setClearRange((prev) => ({
+                          ...prev,
+                          end_date: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button variant="destructive" onClick={openClearHistoryConfirmation} disabled={!canClearHistory}>
+                    {deletingHistory ? "Clearing..." : "Clear History"}
+                  </Button>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">This action cannot be undone.</p>
+                </div>
               </Card>
             )}
+
             <Card className="admin-card p-4 space-y-4 backdrop-blur-sm">
               <div>
                 <h4 className="font-medium">Operations</h4>
@@ -433,6 +523,28 @@ export default function BrandingManagement() {
                 />
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Defines when a new business day starts in East Africa Time.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="branding-low-power">Low-Power Mode (Waiter/KDS)</Label>
+                <div className="flex items-center gap-2 rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                  <Checkbox
+                    id="branding-low-power"
+                    checked={form.low_power_mode_enabled}
+                    onCheckedChange={(value) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        low_power_mode_enabled: Boolean(value),
+                      }))
+                    }
+                  />
+                  <span className="text-sm text-slate-700 dark:text-slate-200">
+                    Use the lightweight UI for waiter and KDS screens to improve performance on older tablets.
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Default is ON. Disable if you want full animations and visual effects on those screens.
                 </p>
               </div>
 
@@ -540,8 +652,38 @@ export default function BrandingManagement() {
             </Card>
           </div>
         </TabsContent>
+
+        <TabsContent value="license" className="mt-0" data-testid="settings-content-license">
+          <Card className="admin-card p-4 space-y-4 backdrop-blur-sm">
+            <CloudSettings view="license" />
+          </Card>
+        </TabsContent>
       </Tabs>
 
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear selected order history?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all orders, order items, and print jobs from{" "}
+              {clearRange.start_date || "the selected start date"} to {clearRange.end_date || "the selected end date"}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingHistory}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                handleClearHistory();
+              }}
+              disabled={deletingHistory}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {deletingHistory ? "Clearing..." : "Yes, clear history"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

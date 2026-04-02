@@ -32,7 +32,7 @@ const presetOptions = [
   { id: "shot", label: "Shot", serving_type: "shot", serving_value: 1 },
   { id: "double", label: "Double Shot", serving_type: "shot", serving_value: 2 },
   { id: "bottle", label: "Bottle", serving_type: "bottle", serving_value: 1 },
-  { id: "custom_ml", label: "Custom ml", serving_type: "custom_ml", serving_value: null },
+  { id: "custom_ml", label: "Custom Shots", serving_type: "custom_ml", serving_value: null },
 ];
 
 const selectStyles = {
@@ -58,6 +58,16 @@ const selectStyles = {
   }),
 };
 
+const UNIT_OPTIONS = ["Bottle", "Other"];
+const DEFAULT_SHOTS_PER_BOTTLE = 15;
+
+const buildDefaultForm = () => ({
+  name: "",
+  unit: "Bottle",
+  has_shots: true,
+  shots_per_bottle: String(DEFAULT_SHOTS_PER_BOTTLE),
+});
+
 function ConfirmDialog({ open, title, description, onConfirm, onCancel, loading }) {
   return (
     <Dialog open={open} onOpenChange={(v) => !loading && onCancel()}>
@@ -80,15 +90,16 @@ function ConfirmDialog({ open, title, description, onConfirm, onCancel, loading 
 }
 
 function formatLinkRule(link, item) {
+  const shotsPerBottle = Number(item?.shots_per_bottle || 0);
   if (link.serving_type === "shot") {
-    const totalMl = Number(item.default_shot_ml || 0) * Number(link.serving_value || 0);
     const label = Number(link.serving_value) === 1 ? "shot" : "shots";
-    return `${link.serving_value} ${label} (${totalMl} ml)`;
+    return `${link.serving_value} ${label}`;
   }
   if (link.serving_type === "bottle") {
-    return `${link.serving_value} bottle`;
+    const shotSuffix = shotsPerBottle > 0 ? ` (${Number(link.serving_value) * shotsPerBottle} shots)` : "";
+    return `${link.serving_value} bottle${Number(link.serving_value) === 1 ? "" : "s"}${shotSuffix}`;
   }
-  return `${link.serving_value} ml`;
+  return `${link.serving_value} shots`;
 }
 
 export default function InventoryItemsTab() {
@@ -100,12 +111,7 @@ export default function InventoryItemsTab() {
 
   const [itemModalOpen, setItemModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [form, setForm] = useState({
-    name: "",
-    unit: "Bottle",
-    container_size_ml: 750,
-    default_shot_ml: 50,
-  });
+  const [form, setForm] = useState(buildDefaultForm);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -156,21 +162,18 @@ export default function InventoryItemsTab() {
   const openItemModal = (item = null) => {
     setErrors({});
     if (item) {
+      const shotsPerBottle = Number(item.shots_per_bottle || 0);
+      const hasShots = item.unit === "Bottle" && shotsPerBottle > 0;
       setEditingItem(item);
       setForm({
         name: item.name,
         unit: item.unit,
-        container_size_ml: item.container_size_ml || 750,
-        default_shot_ml: item.default_shot_ml || 50,
+        has_shots: hasShots,
+        shots_per_bottle: hasShots ? String(shotsPerBottle) : "",
       });
     } else {
       setEditingItem(null);
-      setForm({
-        name: "",
-        unit: "Bottle",
-        container_size_ml: 750,
-        default_shot_ml: 50,
-      });
+      setForm(buildDefaultForm());
     }
     setItemModalOpen(true);
   };
@@ -179,12 +182,7 @@ export default function InventoryItemsTab() {
     if (submitting) return;
     setItemModalOpen(false);
     setEditingItem(null);
-    setForm({
-      name: "",
-      unit: "Bottle",
-      container_size_ml: 750,
-      default_shot_ml: 50,
-    });
+    setForm(buildDefaultForm());
     setErrors({});
   };
 
@@ -192,10 +190,11 @@ export default function InventoryItemsTab() {
     const nextErrors = {};
     if (!form.name.trim()) nextErrors.name = "Item name is required";
     if (!form.unit.trim()) nextErrors.unit = "Stock unit is required";
-    if (Number(form.container_size_ml) <= 0) nextErrors.container_size_ml = "Must be greater than zero";
-    if (Number(form.default_shot_ml) <= 0) nextErrors.default_shot_ml = "Must be greater than zero";
-    if (Number(form.default_shot_ml) > Number(form.container_size_ml)) {
-      nextErrors.default_shot_ml = "Cannot be greater than bottle size";
+    if (form.unit === "Bottle" && form.has_shots) {
+      const shots = Number(form.shots_per_bottle);
+      if (!Number.isFinite(shots) || shots <= 0) {
+        nextErrors.shots_per_bottle = "Shots per bottle must be greater than zero";
+      }
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -208,8 +207,12 @@ export default function InventoryItemsTab() {
     const payload = {
       name: form.name,
       unit: form.unit,
-      container_size_ml: Number(form.container_size_ml),
-      default_shot_ml: Number(form.default_shot_ml),
+      shots_per_bottle:
+        form.unit === "Bottle"
+          ? form.has_shots
+            ? Number(form.shots_per_bottle)
+            : 0
+          : 0,
     };
 
     setSubmitting(true);
@@ -251,7 +254,7 @@ export default function InventoryItemsTab() {
       setLinkingItem(detail);
       setSelectedMenuItemId(null);
       setSelectedPresetId("shot");
-      setCustomMlValue(detail.default_shot_ml || "");
+      setCustomMlValue("1");
       setEditingLinkId(null);
       setLinkModalOpen(true);
     } catch (err) {
@@ -262,11 +265,21 @@ export default function InventoryItemsTab() {
   const resetLinkForm = () => {
     setSelectedMenuItemId(null);
     setSelectedPresetId("shot");
-    setCustomMlValue(linkingItem?.default_shot_ml || "");
+    setCustomMlValue("1");
     setEditingLinkId(null);
   };
 
   const linkedMenuIds = useMemo(() => new Set(linkedMenuOwners.keys()), [linkedMenuOwners]);
+
+  const linkingSummary = useMemo(() => {
+    if (!linkingItem) return null;
+    const isBottle = String(linkingItem.unit || "").toLowerCase() === "bottle";
+    const shotsPerBottle = Number(linkingItem.shots_per_bottle || 0);
+    if (isBottle && shotsPerBottle) {
+      return `Shots per bottle: ${shotsPerBottle.toFixed(2)}`;
+    }
+    return `Unit: ${linkingItem.unit || "N/A"}`;
+  }, [linkingItem]);
 
   const menuOptions = useMemo(() => {
     return menuItems
@@ -293,7 +306,7 @@ export default function InventoryItemsTab() {
     if (selectedPreset.id === "custom_ml") {
       const parsed = Number(customMlValue);
       if (!Number.isFinite(parsed) || parsed <= 0) {
-        throw new Error("Custom ml must be greater than zero");
+        throw new Error("Custom shots must be greater than zero");
       }
       return {
         menu_item_id: selectedMenuItemId,
@@ -366,17 +379,17 @@ export default function InventoryItemsTab() {
     setSelectedMenuItemId(link.menu_item_id);
     if (link.serving_type === "shot" && Number(link.serving_value) === 1) {
       setSelectedPresetId("shot");
-      setCustomMlValue(linkingItem?.default_shot_ml || "");
+      setCustomMlValue("1");
       return;
     }
     if (link.serving_type === "shot" && Number(link.serving_value) === 2) {
       setSelectedPresetId("double");
-      setCustomMlValue(linkingItem?.default_shot_ml || "");
+      setCustomMlValue("1");
       return;
     }
     if (link.serving_type === "bottle" && Number(link.serving_value) === 1) {
       setSelectedPresetId("bottle");
-      setCustomMlValue(linkingItem?.default_shot_ml || "");
+      setCustomMlValue("1");
       return;
     }
     setSelectedPresetId("custom_ml");
@@ -407,7 +420,7 @@ export default function InventoryItemsTab() {
             <DialogHeader>
               <DialogTitle>{editingItem ? "Edit Item" : "Register Item"}</DialogTitle>
               <DialogDescription>
-                Create the bottle first. Menu links can be added from the item row using quick drink presets.
+                Register stock with a simple unit and (if bottle) the shots-per-bottle ratio.
               </DialogDescription>
             </DialogHeader>
 
@@ -426,50 +439,80 @@ export default function InventoryItemsTab() {
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-sm font-medium">Stock Unit</label>
-                  <Input
+                  <select
                     value={form.unit}
-                    onChange={(e) => setForm((prev) => ({ ...prev, unit: e.target.value }))}
-                    className={errors.unit ? "ring-2 ring-destructive" : ""}
+                    onChange={(e) => {
+                      const nextUnit = e.target.value;
+                      setForm((prev) => ({
+                        ...prev,
+                        unit: nextUnit,
+                        has_shots: nextUnit === "Bottle",
+                        shots_per_bottle:
+                          nextUnit === "Bottle"
+                            ? prev.shots_per_bottle || String(DEFAULT_SHOTS_PER_BOTTLE)
+                            : "",
+                      }));
+                    }}
+                    className={`flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-base text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm ${
+                      errors.unit ? "ring-2 ring-destructive" : ""
+                    }`}
                     disabled={submitting}
-                  />
+                  >
+                    {UNIT_OPTIONS.map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
+                      </option>
+                    ))}
+                  </select>
                   {errors.unit && <p className="mt-1 text-xs text-destructive">{errors.unit}</p>}
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Bottle Size (ml)</label>
-                  <Input
-                    type="number"
-                    min="0.001"
-                    step="0.001"
-                    value={form.container_size_ml}
-                    onChange={(e) => setForm((prev) => ({ ...prev, container_size_ml: e.target.value }))}
-                    className={errors.container_size_ml ? "ring-2 ring-destructive" : ""}
-                    disabled={submitting}
-                  />
-                  {errors.container_size_ml && (
-                    <p className="mt-1 text-xs text-destructive">{errors.container_size_ml}</p>
-                  )}
-                </div>
+                {form.unit === "Bottle" && (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Bottle Has Shots?</label>
+                    <select
+                      value={form.has_shots ? "yes" : "no"}
+                      onChange={(e) => {
+                        const enabled = e.target.value === "yes";
+                        setForm((prev) => ({
+                          ...prev,
+                          has_shots: enabled,
+                          shots_per_bottle: enabled ? prev.shots_per_bottle || String(DEFAULT_SHOTS_PER_BOTTLE) : "",
+                        }));
+                      }}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-base text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                      disabled={submitting}
+                    >
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="mb-1 block text-sm font-medium">Default Shot Size (ml)</label>
-                <Input
-                  type="number"
-                  min="0.001"
-                  step="0.001"
-                  value={form.default_shot_ml}
-                  onChange={(e) => setForm((prev) => ({ ...prev, default_shot_ml: e.target.value }))}
-                  className={errors.default_shot_ml ? "ring-2 ring-destructive" : ""}
-                  disabled={submitting}
-                />
-                {errors.default_shot_ml && (
-                  <p className="mt-1 text-xs text-destructive">{errors.default_shot_ml}</p>
-                )}
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Example: 750ml bottle with 50ml shots gives 15 default shots per bottle.
-                </p>
-              </div>
+              {form.unit === "Bottle" && form.has_shots && (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Shots per Bottle</label>
+                    <Input
+                      type="number"
+                      min="0.001"
+                      step="0.001"
+                      value={form.shots_per_bottle}
+                      onChange={(e) => setForm((prev) => ({ ...prev, shots_per_bottle: e.target.value }))}
+                      className={errors.shots_per_bottle ? "ring-2 ring-destructive" : ""}
+                      disabled={submitting}
+                    />
+                    {errors.shots_per_bottle && (
+                      <p className="mt-1 text-xs text-destructive">{errors.shots_per_bottle}</p>
+                    )}
+                  </div>
+
+                  <p className="md:col-span-2 text-xs text-muted-foreground">
+                    Inventory is tracked in shots for bottle-based items.
+                  </p>
+                </div>
+              )}
 
               <DialogFooter className="gap-2">
                 <Button type="button" variant="outline" onClick={closeItemModal} disabled={submitting}>
@@ -492,8 +535,6 @@ export default function InventoryItemsTab() {
                 <th className="px-4 py-3 font-medium">No.</th>
                 <th className="px-4 py-3 font-medium">Name</th>
                 <th className="px-4 py-3 font-medium">Stock Unit</th>
-                <th className="px-4 py-3 font-medium">Bottle ml</th>
-                <th className="px-4 py-3 font-medium">Shot ml</th>
                 <th className="px-4 py-3 font-medium">Shots/Bottle</th>
                 <th className="px-4 py-3 font-medium text-right">Actions</th>
               </tr>
@@ -501,42 +542,45 @@ export default function InventoryItemsTab() {
             <tbody>
               {loadingItems ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-6 text-center text-muted-foreground">
+                  <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">
                     Loading items...
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                  <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
                     No items found.
                   </td>
                 </tr>
               ) : (
-                items.map((item, idx) => (
-                  <tr key={item.id} className="inventory-table-row">
-                    <td className="px-4 py-3">{idx + 1}</td>
-                    <td className="px-4 py-3">{item.name}</td>
-                    <td className="px-4 py-3">{item.unit}</td>
-                    <td className="px-4 py-3">{item.container_size_ml}</td>
-                    <td className="px-4 py-3">{item.default_shot_ml}</td>
-                    <td className="px-4 py-3">
-                      {(Number(item.container_size_ml) / Number(item.default_shot_ml)).toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => openLinkModal(item)}>
-                          Menu Links
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => openItemModal(item)}>
-                          Edit
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => setDeleteId(item.id)}>
-                          Delete
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                items.map((item, idx) => {
+                  const isBottle = String(item.unit || "").toLowerCase() === "bottle";
+                  const shotsPerBottle = isBottle ? Number(item.shots_per_bottle || 0) : null;
+
+                  return (
+                    <tr key={item.id} className="inventory-table-row">
+                      <td className="px-4 py-3">{idx + 1}</td>
+                      <td className="px-4 py-3">{item.name}</td>
+                      <td className="px-4 py-3">{item.unit}</td>
+                      <td className="px-4 py-3">
+                        {shotsPerBottle ? shotsPerBottle.toFixed(2) : "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => openLinkModal(item)}>
+                            Menu Links
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => openItemModal(item)}>
+                            Edit
+                          </Button>
+                          <Button size="sm" variant="destructive" onClick={() => setDeleteId(item.id)}>
+                            Delete
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -554,9 +598,11 @@ export default function InventoryItemsTab() {
 
           {linkingItem && (
             <div className="space-y-4">
-              <div className="inventory-panel-soft rounded p-3 text-sm text-muted-foreground">
-                {linkingItem.container_size_ml} ml bottle, {linkingItem.default_shot_ml} ml default shot
-              </div>
+              {linkingSummary && (
+                <div className="inventory-panel-soft rounded p-3 text-sm text-muted-foreground">
+                  {linkingSummary}
+                </div>
+              )}
 
               <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
                 <div className="space-y-3">
@@ -596,7 +642,7 @@ export default function InventoryItemsTab() {
 
                   {selectedPresetId === "custom_ml" && (
                     <div>
-                      <label className="mb-1 block text-sm font-medium">Custom ml</label>
+                      <label className="mb-1 block text-sm font-medium">Custom shots</label>
                       <Input
                         type="number"
                         min="0.001"

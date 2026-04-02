@@ -1,7 +1,8 @@
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone, time
 from decimal import Decimal
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from flask import Blueprint, current_app, jsonify, request
 from flask_jwt_extended import get_jwt, jwt_required
@@ -33,6 +34,47 @@ from ..models import (
 )
 
 compat_bp = Blueprint("compat", __name__)
+
+EAT_TZ = ZoneInfo("Africa/Addis_Ababa")
+
+def _parse_hhmm(value: str) -> time:
+    if not isinstance(value, str):
+        raise ValueError("Expected HH:MM string")
+    parsed = value.strip()
+    hour_str, minute_str = parsed.split(":")
+    hour = int(hour_str)
+    minute = int(minute_str)
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ValueError("Invalid HH:MM")
+    return time(hour=hour, minute=minute)
+
+
+def _business_day_start_time_str(tenant_id: int) -> str:
+    row = BrandingSettings.query.filter_by(tenant_id=tenant_id).first()
+    candidate = (row.business_day_start_time if row else None) or "06:00"
+    try:
+        _parse_hhmm(candidate)
+    except Exception:
+        return "06:00"
+    return candidate
+
+
+def _business_day_start_time(tenant_id: int) -> time:
+    return _parse_hhmm(_business_day_start_time_str(tenant_id))
+
+
+def _business_day_date(dt: datetime | None, tenant_id: int):
+    local_dt = (dt or datetime.now(timezone.utc)).astimezone(EAT_TZ)
+    reset_time = _business_day_start_time(tenant_id)
+    if local_dt.time() < reset_time:
+        return (local_dt - timedelta(days=1)).date()
+    return local_dt.date()
+
+
+def _business_day_bounds_utc(target_day, tenant_id: int):
+    start_eat = datetime.combine(target_day, _business_day_start_time(tenant_id), tzinfo=EAT_TZ)
+    end_eat = start_eat + timedelta(days=1)
+    return start_eat.astimezone(timezone.utc), end_eat.astimezone(timezone.utc)
 
 
 def _custom_branding_locked_for_request() -> bool:
@@ -1440,6 +1482,155 @@ def _inventory_positive_float(value, field_name: str) -> float:
     return parsed
 
 
+def _inventory_non_negative_float(value, field_name: str) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be a number")
+    if parsed < 0:
+        raise ValueError(f"{field_name} must be zero or greater")
+    return parsed
+
+
+def _shots_per_bottle(item) -> float:
+    container = float(getattr(item, "container_size_ml", 0) or 0)
+    shot = float(getattr(item, "default_shot_ml", 0) or 0)
+    if container <= 0 or shot <= 0:
+        return 0.0
+    return container / shot
+
+
+def _get_or_create_store_snapshot(tenant_id: int, inventory_item_id: int, snapshot_date, opening_quantity=None):
+    snapshot = StoreStockSnapshot.query.filter_by(
+        tenant_id=tenant_id,
+        inventory_item_id=inventory_item_id,
+        snapshot_date=snapshot_date,
+    ).first()
+    if snapshot:
+        return snapshot
+    if opening_quantity is None:
+        stock = StoreStock.query.filter_by(tenant_id=tenant_id, inventory_item_id=inventory_item_id).first()
+        opening_quantity = float(stock.quantity or 0) if stock else 0.0
+    snapshot = StoreStockSnapshot(
+        tenant_id=tenant_id,
+        inventory_item_id=inventory_item_id,
+        snapshot_date=snapshot_date,
+        opening_quantity=float(opening_quantity or 0),
+        purchased_quantity=0.0,
+        transferred_out_quantity=0.0,
+        closing_quantity=float(opening_quantity or 0),
+    )
+    db.session.add(snapshot)
+    db.session.flush()
+    return snapshot
+
+
+def _get_or_create_station_snapshot(
+    tenant_id: int,
+    station_id: int,
+    inventory_item_id: int,
+    snapshot_date,
+    opening_quantity=None,
+):
+    snapshot = StationStockSnapshot.query.filter_by(
+        tenant_id=tenant_id,
+        station_id=station_id,
+        inventory_item_id=inventory_item_id,
+        snapshot_date=snapshot_date,
+    ).first()
+    if snapshot:
+        return snapshot
+    if opening_quantity is None:
+        stock = StationStock.query.filter_by(
+            tenant_id=tenant_id,
+            station_id=station_id,
+            inventory_item_id=inventory_item_id,
+        ).first()
+        opening_quantity = float(stock.quantity or 0) if stock else 0.0
+    snapshot = StationStockSnapshot(
+        tenant_id=tenant_id,
+        station_id=station_id,
+        inventory_item_id=inventory_item_id,
+        snapshot_date=snapshot_date,
+        start_of_day_quantity=float(opening_quantity or 0),
+        added_quantity=0.0,
+        sold_quantity=0.0,
+        void_quantity=0.0,
+        remaining_quantity=float(opening_quantity or 0),
+    )
+    db.session.add(snapshot)
+    db.session.flush()
+    return snapshot
+
+
+def _update_store_snapshot_purchase(tenant_id: int, inventory_item_id: int, quantity_delta, opening_quantity=None):
+    if not quantity_delta:
+        return None
+    snapshot_date = _business_day_date(None, tenant_id)
+    snapshot = _get_or_create_store_snapshot(
+        tenant_id=tenant_id,
+        inventory_item_id=inventory_item_id,
+        snapshot_date=snapshot_date,
+        opening_quantity=opening_quantity,
+    )
+    snapshot.purchased_quantity = float(snapshot.purchased_quantity or 0) + float(quantity_delta)
+    snapshot.closing_quantity = (
+        float(snapshot.opening_quantity or 0)
+        + float(snapshot.purchased_quantity or 0)
+        - float(snapshot.transferred_out_quantity or 0)
+    )
+    db.session.flush()
+    return snapshot
+
+
+def _update_store_snapshot_transfer(tenant_id: int, inventory_item_id: int, quantity_delta, opening_quantity=None):
+    if not quantity_delta:
+        return None
+    snapshot_date = _business_day_date(None, tenant_id)
+    snapshot = _get_or_create_store_snapshot(
+        tenant_id=tenant_id,
+        inventory_item_id=inventory_item_id,
+        snapshot_date=snapshot_date,
+        opening_quantity=opening_quantity,
+    )
+    snapshot.transferred_out_quantity = float(snapshot.transferred_out_quantity or 0) + float(quantity_delta)
+    snapshot.closing_quantity = (
+        float(snapshot.opening_quantity or 0)
+        + float(snapshot.purchased_quantity or 0)
+        - float(snapshot.transferred_out_quantity or 0)
+    )
+    db.session.flush()
+    return snapshot
+
+
+def _adjust_station_snapshot_added(
+    tenant_id: int,
+    station_id: int,
+    inventory_item_id: int,
+    quantity_delta,
+    opening_quantity=None,
+):
+    if not quantity_delta:
+        return None
+    snapshot_date = _business_day_date(None, tenant_id)
+    snapshot = _get_or_create_station_snapshot(
+        tenant_id=tenant_id,
+        station_id=station_id,
+        inventory_item_id=inventory_item_id,
+        snapshot_date=snapshot_date,
+        opening_quantity=opening_quantity,
+    )
+    snapshot.added_quantity = float(snapshot.added_quantity or 0) + float(quantity_delta)
+    snapshot.remaining_quantity = (
+        float(snapshot.start_of_day_quantity or 0)
+        + float(snapshot.added_quantity or 0)
+        - float(snapshot.sold_quantity or 0)
+        + float(snapshot.void_quantity or 0)
+    )
+    db.session.flush()
+    return snapshot
+
+
 @compat_bp.get("/inventory/items/")
 @jwt_required()
 def inventory_items_list():
@@ -1484,12 +1675,18 @@ def inventory_items_create():
     existing = InventoryItem.query.filter_by(tenant_id=tenant_id, name=name).first()
     if existing:
         return jsonify({"msg": "Inventory item already exists"}), 400
+    shots_per_bottle = _shots_per_bottle(type("Tmp", (), {
+        "container_size_ml": container_size_ml,
+        "default_shot_ml": default_shot_ml,
+    })())
+    serving_unit = "shot" if unit.lower() == "bottle" else "ml"
+    servings_per_unit = shots_per_bottle if serving_unit == "shot" else (container_size_ml / default_shot_ml)
     row = InventoryItem(
         tenant_id=tenant_id,
         name=name,
         unit=unit,
-        serving_unit="ml",
-        servings_per_unit=container_size_ml / default_shot_ml,
+        serving_unit=serving_unit,
+        servings_per_unit=servings_per_unit,
         container_size_ml=container_size_ml,
         default_shot_ml=default_shot_ml,
         is_active=bool(payload.get("is_active", True)),
@@ -1589,8 +1786,9 @@ def inventory_item_update(item_id: int):
         return jsonify({"msg": "default_shot_ml cannot be greater than container_size_ml"}), 400
     row.container_size_ml = container_size_ml
     row.default_shot_ml = default_shot_ml
-    row.serving_unit = "ml"
-    row.servings_per_unit = container_size_ml / default_shot_ml
+    shots_per_bottle = _shots_per_bottle(row)
+    row.serving_unit = "shot" if (row.unit or "").strip().lower() == "bottle" else "ml"
+    row.servings_per_unit = shots_per_bottle if row.serving_unit == "shot" else (container_size_ml / default_shot_ml)
     if "is_active" in payload:
         row.is_active = bool(payload.get("is_active"))
     db.session.flush()
@@ -1636,7 +1834,9 @@ def inventory_links_create(item_id: int):
         if serving_type not in {"shot", "bottle", "custom_ml"}:
             return jsonify({"msg": "serving_type must be one of: shot, bottle, custom_ml"}), 400
         if serving_value_raw in (None, ""):
-            serving_value = 1.0
+            serving_value = (
+                float(inventory_item.default_shot_ml or 1.0) if serving_type == "custom_ml" else 1.0
+            )
         else:
             try:
                 serving_value = _inventory_positive_float(serving_value_raw, "serving_value")
@@ -1748,10 +1948,13 @@ def inventory_link_update(link_id: int):
         item = link.inventory_item
         serving_type = str(payload.get("serving_type", link.serving_type or "custom_ml")).strip().lower()
         value_raw = payload.get("serving_value", link.serving_value)
-        try:
-            serving_value = _inventory_positive_float(value_raw, "serving_value")
-        except ValueError as exc:
-            return jsonify({"msg": str(exc)}), 400
+        if value_raw in (None, ""):
+            serving_value = float(item.default_shot_ml or 1.0) if serving_type == "custom_ml" else 1.0
+        else:
+            try:
+                serving_value = _inventory_positive_float(value_raw, "serving_value")
+            except ValueError as exc:
+                return jsonify({"msg": str(exc)}), 400
         if serving_type == "custom_ml":
             deduction_ratio = serving_value / float(item.container_size_ml or 1.0)
         elif serving_type == "shot":
@@ -1839,8 +2042,11 @@ def create_purchase():
         db.session.add(stock)
     stock.quantity = _inventory_decimal(stock.quantity) + quantity
     db.session.flush()
+    snapshot = _update_store_snapshot_purchase(tenant_id, inventory_item_id, quantity, opening_quantity=None)
     _emit_sync_event(tenant_id, "stock_purchase", purchase.id, "upsert", _sync_payload_stock_purchase(purchase))
     _emit_sync_event(tenant_id, "store_stock", stock.inventory_item_id, "upsert", _sync_payload_store_stock(stock))
+    if snapshot:
+        _emit_sync_event(tenant_id, "store_stock_snapshot", snapshot.inventory_item_id, "upsert", _sync_payload_store_stock_snapshot(snapshot))
     db.session.commit()
     return jsonify({"msg": "Purchase recorded successfully", "purchase_id": purchase.id}), 201
 
@@ -1900,8 +2106,11 @@ def update_purchase(item_id: int):
     row.unit_price = payload.get("unit_price", row.unit_price)
     row.status = "Updated"
     db.session.flush()
+    snapshot = _update_store_snapshot_purchase(tenant_id, row.inventory_item_id, quantity_diff, opening_quantity=None)
     _emit_sync_event(tenant_id, "stock_purchase", row.id, "upsert", _sync_payload_stock_purchase(row))
     _emit_sync_event(tenant_id, "store_stock", stock.inventory_item_id, "upsert", _sync_payload_store_stock(stock))
+    if snapshot:
+        _emit_sync_event(tenant_id, "store_stock_snapshot", snapshot.inventory_item_id, "upsert", _sync_payload_store_stock_snapshot(snapshot))
     db.session.commit()
     return jsonify({"msg": "Purchase updated successfully"}), 200
 
@@ -1923,8 +2132,11 @@ def delete_purchase(item_id: int):
     stock.quantity = _inventory_decimal(stock.quantity) - _inventory_decimal(row.quantity)
     row.status = "Deleted"
     db.session.flush()
+    snapshot = _update_store_snapshot_purchase(tenant_id, row.inventory_item_id, -_inventory_decimal(row.quantity), opening_quantity=None)
     _emit_sync_event(tenant_id, "stock_purchase", row.id, "upsert", _sync_payload_stock_purchase(row))
     _emit_sync_event(tenant_id, "store_stock", stock.inventory_item_id, "upsert", _sync_payload_store_stock(stock))
+    if snapshot:
+        _emit_sync_event(tenant_id, "store_stock_snapshot", snapshot.inventory_item_id, "upsert", _sync_payload_store_stock_snapshot(snapshot))
     db.session.commit()
     return jsonify({"msg": "Purchase deleted and store stock adjusted"}), 200
 
@@ -2002,9 +2214,15 @@ def create_transfer():
     )
     db.session.add(transfer)
     db.session.flush()
+    store_snapshot = _update_store_snapshot_transfer(tenant_id, inventory_item_id, quantity, opening_quantity=None)
+    station_snapshot = _adjust_station_snapshot_added(tenant_id, station_id, inventory_item_id, quantity, opening_quantity=None)
     _emit_sync_event(tenant_id, "stock_transfer", transfer.id, "upsert", _sync_payload_stock_transfer(transfer))
     _emit_sync_event(tenant_id, "store_stock", store_stock.inventory_item_id, "upsert", _sync_payload_store_stock(store_stock))
     _emit_sync_event(tenant_id, "station_stock", station_stock.station_id, "upsert", _sync_payload_station_stock(station_stock))
+    if store_snapshot:
+        _emit_sync_event(tenant_id, "store_stock_snapshot", store_snapshot.inventory_item_id, "upsert", _sync_payload_store_stock_snapshot(store_snapshot))
+    if station_snapshot:
+        _emit_sync_event(tenant_id, "station_stock_snapshot", station_snapshot.station_id, "upsert", _sync_payload_station_stock_snapshot(station_snapshot))
     db.session.commit()
     return jsonify({"msg": "Stock transferred successfully", "transfer_id": transfer.id}), 201
 
@@ -2081,9 +2299,15 @@ def update_transfer(item_id: int):
     transfer.quantity = new_quantity
     transfer.status = "Updated"
     db.session.flush()
+    store_snapshot = _update_store_snapshot_transfer(tenant_id, transfer.inventory_item_id, (new_quantity - original_quantity), opening_quantity=None)
+    station_snapshot = _adjust_station_snapshot_added(tenant_id, transfer.station_id, transfer.inventory_item_id, (new_quantity - original_quantity), opening_quantity=None)
     _emit_sync_event(tenant_id, "stock_transfer", transfer.id, "upsert", _sync_payload_stock_transfer(transfer))
     _emit_sync_event(tenant_id, "store_stock", store_stock.inventory_item_id, "upsert", _sync_payload_store_stock(store_stock))
     _emit_sync_event(tenant_id, "station_stock", station_stock.station_id, "upsert", _sync_payload_station_stock(station_stock))
+    if store_snapshot:
+        _emit_sync_event(tenant_id, "store_stock_snapshot", store_snapshot.inventory_item_id, "upsert", _sync_payload_store_stock_snapshot(store_snapshot))
+    if station_snapshot:
+        _emit_sync_event(tenant_id, "station_stock_snapshot", station_snapshot.station_id, "upsert", _sync_payload_station_stock_snapshot(station_snapshot))
     db.session.commit()
     return jsonify({"msg": "Transfer updated successfully"}), 200
 
@@ -2112,9 +2336,15 @@ def delete_transfer(item_id: int):
     station_stock.quantity = _inventory_decimal(station_stock.quantity) - _inventory_decimal(transfer.quantity)
     transfer.status = "Deleted"
     db.session.flush()
+    store_snapshot = _update_store_snapshot_transfer(tenant_id, transfer.inventory_item_id, -_inventory_decimal(transfer.quantity), opening_quantity=None)
+    station_snapshot = _adjust_station_snapshot_added(tenant_id, transfer.station_id, transfer.inventory_item_id, -_inventory_decimal(transfer.quantity), opening_quantity=None)
     _emit_sync_event(tenant_id, "stock_transfer", transfer.id, "upsert", _sync_payload_stock_transfer(transfer))
     _emit_sync_event(tenant_id, "store_stock", store_stock.inventory_item_id, "upsert", _sync_payload_store_stock(store_stock))
     _emit_sync_event(tenant_id, "station_stock", station_stock.station_id, "upsert", _sync_payload_station_stock(station_stock))
+    if store_snapshot:
+        _emit_sync_event(tenant_id, "store_stock_snapshot", store_snapshot.inventory_item_id, "upsert", _sync_payload_store_stock_snapshot(store_snapshot))
+    if station_snapshot:
+        _emit_sync_event(tenant_id, "station_stock_snapshot", station_snapshot.station_id, "upsert", _sync_payload_station_stock_snapshot(station_snapshot))
     db.session.commit()
     return jsonify({"msg": "Transfer deleted and stock quantities adjusted"}), 200
 
@@ -2231,12 +2461,14 @@ def inventory_stock_overview():
                 }
             )
         store_quantity = store_map.get(item.id, 0.0)
+        shots_per_bottle = _shots_per_bottle(item)
         payload_rows.append(
             {
                 "inventory_item_id": item.id,
                 "inventory_item_name": item.name,
                 "container_size_ml": _inventory_decimal(item.container_size_ml),
                 "default_shot_ml": _inventory_decimal(item.default_shot_ml),
+                "shots_per_bottle": shots_per_bottle,
                 "store_quantity": store_quantity,
                 "total_station_quantity": total_station_quantity,
                 "total_quantity": store_quantity + total_station_quantity,
@@ -2247,7 +2479,7 @@ def inventory_stock_overview():
         {
             "stations": [{"id": station.id, "name": station.name} for station in stations],
             "rows": payload_rows,
-            "generated_for": None,
+            "generated_for": _business_day_date(None, tenant_id).isoformat(),
         }
     )
 
@@ -2258,39 +2490,325 @@ def inventory_daily_history():
     tenant_id, error = _tenant_id_required()
     if error:
         return error
+    query_date = request.args.get("date")
+    try:
+        target_date = datetime.fromisoformat(query_date).date() if query_date else _business_day_date(None, tenant_id)
+    except ValueError:
+        return jsonify({"msg": "Invalid date format, use YYYY-MM-DD"}), 400
+
+    scope = (request.args.get("scope") or "all").strip().lower()
+    station_id = request.args.get("station_id", type=int)
+    start_dt, end_dt = _business_day_bounds_utc(target_date, tenant_id)
+
     items = InventoryItem.query.filter_by(tenant_id=tenant_id).order_by(InventoryItem.name.asc()).all()
-    stations = Station.query.filter_by(tenant_id=tenant_id).order_by(Station.name.asc()).all()
-    station_rows = StationStock.query.filter_by(tenant_id=tenant_id).all()
-    station_map = {(row.station_id, row.inventory_item_id): _inventory_decimal(row.quantity) for row in station_rows}
-    rows = []
-    for station in stations:
-        for item in items:
-            qty = station_map.get((station.id, item.id), 0.0)
-            if qty == 0.0:
-                continue
-            rows.append(
-                {
-                    "scope_type": "station",
-                    "scope_id": station.id,
-                    "scope_name": station.name,
-                    "inventory_item_id": item.id,
-                    "inventory_item_name": item.name,
-                    "opening_quantity": qty,
-                    "purchased_quantity": 0.0,
-                    "transferred_out_quantity": 0.0,
-                    "transferred_in_quantity": 0.0,
-                    "sold_quantity": 0.0,
-                    "void_quantity": 0.0,
-                    "closing_quantity": qty,
-                }
+    stations_query = Station.query.filter_by(tenant_id=tenant_id).order_by(Station.name.asc())
+    if station_id:
+        stations_query = stations_query.filter(Station.id == station_id)
+    stations = stations_query.all()
+
+    current_store_map = {
+        row.inventory_item_id: float(row.quantity or 0)
+        for row in StoreStock.query.filter_by(tenant_id=tenant_id).all()
+    }
+    current_station_map = {
+        (row.station_id, row.inventory_item_id): float(row.quantity or 0)
+        for row in StationStock.query.filter_by(tenant_id=tenant_id).all()
+    }
+
+    store_snapshots = {
+        row.inventory_item_id: row
+        for row in StoreStockSnapshot.query.filter_by(tenant_id=tenant_id, snapshot_date=target_date).all()
+    }
+    previous_store_snapshots = {
+        row.inventory_item_id: row
+        for row in StoreStockSnapshot.query.filter_by(tenant_id=tenant_id, snapshot_date=target_date - timedelta(days=1)).all()
+    }
+    station_snapshots = {
+        (row.station_id, row.inventory_item_id): row
+        for row in StationStockSnapshot.query.filter_by(tenant_id=tenant_id, snapshot_date=target_date).all()
+    }
+    previous_station_snapshots = {
+        (row.station_id, row.inventory_item_id): row
+        for row in StationStockSnapshot.query.filter_by(tenant_id=tenant_id, snapshot_date=target_date - timedelta(days=1)).all()
+    }
+
+    purchase_totals = {
+        inventory_item_id: float(quantity or 0)
+        for inventory_item_id, quantity in (
+            db.session.query(StockPurchase.inventory_item_id, db.func.coalesce(db.func.sum(StockPurchase.quantity), 0))
+            .filter(
+                StockPurchase.tenant_id == tenant_id,
+                StockPurchase.status != "Deleted",
+                StockPurchase.created_at >= start_dt,
+                StockPurchase.created_at < end_dt,
             )
+            .group_by(StockPurchase.inventory_item_id)
+            .all()
+        )
+    }
+    transfer_totals = {
+        inventory_item_id: float(quantity or 0)
+        for inventory_item_id, quantity in (
+            db.session.query(StockTransfer.inventory_item_id, db.func.coalesce(db.func.sum(StockTransfer.quantity), 0))
+            .filter(
+                StockTransfer.tenant_id == tenant_id,
+                StockTransfer.status != "Deleted",
+                StockTransfer.created_at >= start_dt,
+                StockTransfer.created_at < end_dt,
+            )
+            .group_by(StockTransfer.inventory_item_id)
+            .all()
+        )
+    }
+    transfer_in_totals = {
+        (station_id_value, inventory_item_id): float(quantity or 0)
+        for station_id_value, inventory_item_id, quantity in (
+            db.session.query(
+                StockTransfer.station_id,
+                StockTransfer.inventory_item_id,
+                db.func.coalesce(db.func.sum(StockTransfer.quantity), 0),
+            )
+            .filter(
+                StockTransfer.tenant_id == tenant_id,
+                StockTransfer.status != "Deleted",
+                StockTransfer.created_at >= start_dt,
+                StockTransfer.created_at < end_dt,
+            )
+            .group_by(StockTransfer.station_id, StockTransfer.inventory_item_id)
+            .all()
+        )
+    }
+
+    rows = []
+    if scope in {"all", "store"}:
+        for item in items:
+            purchased = purchase_totals.get(item.id, 0.0)
+            transferred_out = transfer_totals.get(item.id, 0.0)
+            current_quantity = current_store_map.get(item.id, 0.0)
+            snapshot = store_snapshots.get(item.id)
+            opening_adjusted = bool(snapshot and getattr(snapshot, "opening_adjusted", False))
+            if target_date == _business_day_date(None, tenant_id):
+                if snapshot:
+                    opening = float(snapshot.opening_quantity or 0)
+                    purchased = float(snapshot.purchased_quantity or 0)
+                    transferred_out = float(snapshot.transferred_out_quantity or 0)
+                    closing = float(snapshot.closing_quantity or 0)
+                elif previous_store_snapshots.get(item.id):
+                    opening = float(previous_store_snapshots[item.id].closing_quantity or 0)
+                    closing = current_quantity
+                else:
+                    opening = current_quantity - purchased + transferred_out
+                    closing = current_quantity
+            elif snapshot:
+                opening = float(snapshot.opening_quantity or 0)
+                closing = float(snapshot.closing_quantity or 0)
+                purchased = float(snapshot.purchased_quantity or 0)
+                transferred_out = float(snapshot.transferred_out_quantity or 0)
+            elif previous_store_snapshots.get(item.id):
+                opening = float(previous_store_snapshots[item.id].closing_quantity or 0)
+                closing = opening + purchased - transferred_out
+            else:
+                opening = 0.0
+                closing = opening + purchased - transferred_out
+
+            if any(abs(v) > 0.0001 for v in (opening, purchased, transferred_out, closing)):
+                rows.append(
+                    {
+                        "scope_type": "store",
+                        "scope_id": None,
+                        "scope_name": "Store",
+                        "inventory_item_id": item.id,
+                        "inventory_item_name": item.name,
+                        "shots_per_bottle": _shots_per_bottle(item),
+                        "opening_adjusted": opening_adjusted,
+                        "opening_quantity": opening,
+                        "purchased_quantity": purchased,
+                        "transferred_out_quantity": transferred_out,
+                        "transferred_in_quantity": 0.0,
+                        "sold_quantity": 0.0,
+                        "void_quantity": 0.0,
+                        "closing_quantity": closing,
+                    }
+                )
+
+    if scope in {"all", "station"}:
+        for station in stations:
+            for item in items:
+                transfer_in = transfer_in_totals.get((station.id, item.id), 0.0)
+                current_quantity = current_station_map.get((station.id, item.id), 0.0)
+                snapshot = station_snapshots.get((station.id, item.id))
+                opening_adjusted = bool(snapshot and getattr(snapshot, "opening_adjusted", False))
+                if target_date == _business_day_date(None, tenant_id):
+                    if snapshot and getattr(snapshot, "opening_adjusted", False):
+                        opening = float(snapshot.start_of_day_quantity or 0)
+                        closing = float(snapshot.remaining_quantity or 0)
+                        sold = float(snapshot.sold_quantity or 0)
+                        void_qty = float(snapshot.void_quantity or 0)
+                        transfer_in = float(snapshot.added_quantity or 0)
+                    elif snapshot:
+                        opening = float(snapshot.start_of_day_quantity or 0)
+                        transfer_in = float(snapshot.added_quantity or 0)
+                        sold = float(snapshot.sold_quantity or 0)
+                        void_qty = float(snapshot.void_quantity or 0)
+                        closing = current_quantity
+                    elif previous_station_snapshots.get((station.id, item.id)):
+                        opening = float(previous_station_snapshots[(station.id, item.id)].remaining_quantity or 0)
+                        sold = 0.0
+                        void_qty = 0.0
+                        closing = current_quantity
+                    else:
+                        opening = current_quantity - transfer_in
+                        sold = 0.0
+                        void_qty = 0.0
+                        closing = current_quantity
+                elif snapshot:
+                    opening = float(snapshot.start_of_day_quantity or 0)
+                    transfer_in = float(snapshot.added_quantity or 0)
+                    sold = float(snapshot.sold_quantity or 0)
+                    void_qty = float(snapshot.void_quantity or 0)
+                    closing = float(snapshot.remaining_quantity or 0)
+                elif previous_station_snapshots.get((station.id, item.id)):
+                    opening = float(previous_station_snapshots[(station.id, item.id)].remaining_quantity or 0)
+                    sold = 0.0
+                    void_qty = 0.0
+                    closing = opening + transfer_in
+                else:
+                    opening = 0.0
+                    sold = 0.0
+                    void_qty = 0.0
+                    closing = opening + transfer_in
+
+                if any(abs(v) > 0.0001 for v in (opening, transfer_in, sold, void_qty, closing)):
+                    rows.append(
+                        {
+                            "scope_type": "station",
+                            "scope_id": station.id,
+                            "scope_name": station.name,
+                            "inventory_item_id": item.id,
+                            "inventory_item_name": item.name,
+                            "shots_per_bottle": _shots_per_bottle(item),
+                            "opening_adjusted": opening_adjusted,
+                            "opening_quantity": opening,
+                            "purchased_quantity": 0.0,
+                            "transferred_out_quantity": 0.0,
+                            "transferred_in_quantity": transfer_in,
+                            "sold_quantity": sold,
+                            "void_quantity": void_qty,
+                            "closing_quantity": closing,
+                        }
+                    )
+
     return jsonify(
         {
-            "business_date": None,
-            "business_day_start": None,
-            "business_day_end": None,
-            "scope": "station",
+            "business_date": target_date.isoformat(),
+            "business_day_start": start_dt.isoformat(),
+            "business_day_end": end_dt.isoformat(),
+            "scope": scope,
             "stations": [{"id": station.id, "name": station.name} for station in stations],
             "rows": rows,
         }
     )
+
+
+@compat_bp.patch("/inventory/stock/opening-adjustment")
+@roles_required("super_admin", "tenant_admin", "manager")
+def inventory_opening_adjustment():
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    payload = request.get_json(silent=True) or {}
+    scope = (payload.get("scope") or "").strip().lower()
+    inventory_item_id = payload.get("inventory_item_id")
+    station_id = payload.get("station_id")
+
+    if scope not in {"store", "station"}:
+        return jsonify({"msg": "scope must be either 'store' or 'station'"}), 400
+    if inventory_item_id is None:
+        return jsonify({"msg": "inventory_item_id is required"}), 400
+    try:
+        inventory_item_id = int(inventory_item_id)
+    except (TypeError, ValueError):
+        return jsonify({"msg": "inventory_item_id must be a number"}), 400
+
+    try:
+        opening_quantity = _inventory_non_negative_float(payload.get("opening_quantity"), "opening_quantity")
+    except ValueError as exc:
+        return jsonify({"msg": str(exc)}), 400
+
+    item = InventoryItem.query.filter_by(id=inventory_item_id, tenant_id=tenant_id).first()
+    if item is None:
+        return jsonify({"msg": "Inventory item not found"}), 404
+
+    snapshot_date = _business_day_date(None, tenant_id)
+
+    if scope == "store":
+        snapshot = _get_or_create_store_snapshot(
+            tenant_id=tenant_id,
+            inventory_item_id=item.id,
+            snapshot_date=snapshot_date,
+            opening_quantity=opening_quantity,
+        )
+        snapshot.opening_quantity = opening_quantity
+        if hasattr(snapshot, "opening_adjusted"):
+            snapshot.opening_adjusted = True
+        snapshot.closing_quantity = (
+            float(snapshot.opening_quantity or 0)
+            + float(snapshot.purchased_quantity or 0)
+            - float(snapshot.transferred_out_quantity or 0)
+        )
+        store_stock = StoreStock.query.filter_by(tenant_id=tenant_id, inventory_item_id=item.id).first()
+        if store_stock is None:
+            store_stock = StoreStock(tenant_id=tenant_id, inventory_item_id=item.id, quantity=0.0)
+            db.session.add(store_stock)
+        store_stock.quantity = float(snapshot.closing_quantity or 0)
+        db.session.flush()
+        _emit_sync_event(tenant_id, "store_stock_snapshot", snapshot.inventory_item_id, "upsert", _sync_payload_store_stock_snapshot(snapshot))
+        _emit_sync_event(tenant_id, "store_stock", store_stock.inventory_item_id, "upsert", _sync_payload_store_stock(store_stock))
+        db.session.commit()
+        return jsonify({"msg": "Store opening stock updated"}), 200
+
+    if station_id is None:
+        return jsonify({"msg": "station_id is required for station scope"}), 400
+    try:
+        station_id = int(station_id)
+    except (TypeError, ValueError):
+        return jsonify({"msg": "station_id must be a number"}), 400
+    station = Station.query.filter_by(id=station_id, tenant_id=tenant_id).first()
+    if station is None:
+        return jsonify({"msg": "Station not found"}), 404
+
+    snapshot = _get_or_create_station_snapshot(
+        tenant_id=tenant_id,
+        station_id=station.id,
+        inventory_item_id=item.id,
+        snapshot_date=snapshot_date,
+        opening_quantity=opening_quantity,
+    )
+    snapshot.start_of_day_quantity = opening_quantity
+    if hasattr(snapshot, "opening_adjusted"):
+        snapshot.opening_adjusted = True
+    snapshot.remaining_quantity = (
+        float(snapshot.start_of_day_quantity or 0)
+        + float(snapshot.added_quantity or 0)
+        - float(snapshot.sold_quantity or 0)
+        + float(snapshot.void_quantity or 0)
+    )
+    station_stock = StationStock.query.filter_by(
+        tenant_id=tenant_id,
+        station_id=station.id,
+        inventory_item_id=item.id,
+    ).first()
+    if station_stock is None:
+        station_stock = StationStock(
+            tenant_id=tenant_id,
+            station_id=station.id,
+            inventory_item_id=item.id,
+            quantity=0.0,
+        )
+        db.session.add(station_stock)
+    station_stock.quantity = float(snapshot.remaining_quantity or 0)
+    db.session.flush()
+    _emit_sync_event(tenant_id, "station_stock_snapshot", snapshot.station_id, "upsert", _sync_payload_station_stock_snapshot(snapshot))
+    _emit_sync_event(tenant_id, "station_stock", station_stock.station_id, "upsert", _sync_payload_station_stock(station_stock))
+    db.session.commit()
+    return jsonify({"msg": "Station opening stock updated"}), 200

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { getStations, createStation, updateStation, deleteStation } from "@/api/stations";
 import { FaPlus, FaTrash, FaEdit } from "react-icons/fa";
 import { toast } from "react-hot-toast";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 const inputClass =
   "h-10 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900 shadow-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100";
@@ -302,8 +303,9 @@ export default function StationManagement() {
       )}
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[1px]">
-          <Card className="admin-card w-full max-w-lg overflow-hidden shadow-xl">
+        <ModalPortal>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-2 backdrop-blur-sm">
+            <Card className="admin-card w-full max-w-lg overflow-hidden shadow-xl">
             <div className="border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/50">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{currentStation ? "Edit Station" : "Add Station"}</h2>
             </div>
@@ -381,9 +383,11 @@ export default function StationManagement() {
               </Button>
               <Button onClick={handleSubmit}>{currentStation ? "Update" : "Create"}</Button>
             </div>
-          </Card>
-        </div>
+            </Card>
+          </div>
+        </ModalPortal>
       )}
     </div>
   );
 }
+

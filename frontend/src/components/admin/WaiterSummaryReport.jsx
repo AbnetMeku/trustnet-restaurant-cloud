@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { getWaiterSummary, getWaiterDetails, reopenWaiterDay } from "@/api/reportApi";
+import { closeWaiterDayForWaiter } from "@/api/order_history";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
-import { eatBusinessDateISO } from "@/lib/timezone";
+import { eatBusinessDateISO, msUntilNextBusinessStart } from "@/lib/timezone";
 import { getApiErrorMessage } from "@/lib/apiError";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 export default function WaiterSummaryReport() {
   const today = eatBusinessDateISO();
@@ -18,6 +20,7 @@ export default function WaiterSummaryReport() {
   const [modalWaiter, setModalWaiter] = useState("");
   const [modalItems, setModalItems] = useState([]);
   const [modalLoading, setModalLoading] = useState(false);
+  const isReportToday = endDate === today;
 
   const fetchReport = async () => {
     if (!startDate || !endDate) return;
@@ -44,6 +47,31 @@ export default function WaiterSummaryReport() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startDate, endDate]);
 
+  useEffect(() => {
+    let timerId;
+    let cancelled = false;
+
+    const scheduleNextRefresh = () => {
+      if (cancelled) return;
+      const delay = msUntilNextBusinessStart();
+      timerId = setTimeout(async () => {
+        if (cancelled) return;
+        await fetchReport();
+        scheduleNextRefresh();
+      }, delay);
+    };
+
+    scheduleNextRefresh();
+
+    return () => {
+      cancelled = true;
+      if (timerId) {
+        clearTimeout(timerId);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
+
   const viewDetails = async (waiter) => {
     setModalLoading(true);
     setShowModal(true);
@@ -66,6 +94,17 @@ export default function WaiterSummaryReport() {
       await fetchReport();
     } catch (err) {
       toast.error(getApiErrorMessage(err, "Failed to reopen waiter shift."));
+    }
+  };
+
+  const handleCloseShift = async (waiterId) => {
+    try {
+      const authToken = localStorage.getItem("auth_token");
+      const data = await closeWaiterDayForWaiter(authToken, waiterId);
+      toast.success(data?.message || "Shift closed");
+      await fetchReport();
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Failed to close waiter shift."));
     }
   };
 
@@ -193,9 +232,19 @@ export default function WaiterSummaryReport() {
                       <Button size="sm" onClick={() => viewDetails(waiter)}>
                         View Details
                       </Button>
-                      {waiter.is_shift_closed && (
+                      {waiter.is_shift_closed ? (
                         <Button size="sm" variant="outline" onClick={() => handleReopenShift(waiter.waiter_id)}>
                           Reopen Shift
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleCloseShift(waiter.waiter_id)}
+                          disabled={!isReportToday}
+                          title={!isReportToday ? "Close is only available for today's business day." : undefined}
+                        >
+                          Close Shift
                         </Button>
                       )}
                     </div>
@@ -217,8 +266,9 @@ export default function WaiterSummaryReport() {
       )}
 
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[1px]">
-          <Card className="admin-card w-full max-w-5xl overflow-hidden shadow-xl">
+        <ModalPortal>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-2 backdrop-blur-sm">
+            <Card className="admin-card w-full max-w-5xl overflow-hidden shadow-xl">
             <div className="admin-hero p-4 md:p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -302,10 +352,12 @@ export default function WaiterSummaryReport() {
                 </div>
               )}
             </div>
-          </Card>
-        </div>
+            </Card>
+          </div>
+        </ModalPortal>
       )}
     </div>
   );
 }
+
 
