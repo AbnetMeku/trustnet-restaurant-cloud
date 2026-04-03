@@ -106,6 +106,15 @@ def _parse_datetime(value):
     return None
 
 
+def _apply_timestamps(row, payload: dict) -> None:
+    created_at = _parse_datetime(payload.get("created_at"))
+    updated_at = _parse_datetime(payload.get("updated_at"))
+    if created_at and hasattr(row, "created_at"):
+        row.created_at = created_at
+    if updated_at and hasattr(row, "updated_at"):
+        row.updated_at = updated_at
+
+
 def _get_mapped_id(tenant_id: int, entity_type: str, local_id: str):
     row = SyncIdMap.query.filter_by(
         tenant_id=tenant_id,
@@ -174,6 +183,7 @@ def _upsert_user(tenant_id: int, payload: dict):
         waiter_profile_id = payload.get("waiter_profile_id")
         mapped_profile_id = _resolve_entity_id(tenant_id, "waiter_profile", waiter_profile_id)
     row.waiter_profile_id = mapped_profile_id
+    _apply_timestamps(row, payload)
     if created:
         db.session.flush()
         _ensure_mapping(tenant_id, "user", local_id, row.id)
@@ -204,6 +214,7 @@ def _upsert_table(tenant_id: int, payload: dict):
                 if user:
                     mapped_waiters.append(user)
         row.waiters = mapped_waiters
+    _apply_timestamps(row, payload)
     if created:
         db.session.flush()
         _ensure_mapping(tenant_id, "table", local_id, row.id)
@@ -223,6 +234,7 @@ def _upsert_station(tenant_id: int, payload: dict):
     row.name = (payload.get("name") or row.name or "").strip()
     row.print_mode = (payload.get("print_mode") or row.print_mode or "grouped").strip()
     row.cashier_printer = bool(payload.get("cashier_printer", False))
+    _apply_timestamps(row, payload)
     if created:
         db.session.flush()
         _ensure_mapping(tenant_id, "station", local_id, row.id)
@@ -253,6 +265,7 @@ def _upsert_waiter_profile(tenant_id: int, payload: dict):
                 if station:
                     mapped_stations.append(station)
         row.stations = mapped_stations
+    _apply_timestamps(row, payload)
     if created:
         db.session.flush()
         _ensure_mapping(tenant_id, "waiter_profile", local_id, row.id)
@@ -277,6 +290,7 @@ def _upsert_category(tenant_id: int, payload: dict):
     row.tenant_id = tenant_id
     row.name = (payload.get("name") or row.name or "").strip()
     row.quantity_step = payload.get("quantity_step", row.quantity_step or 1.0)
+    _apply_timestamps(row, payload)
     if created:
         db.session.flush()
         _ensure_mapping(tenant_id, "category", local_id, row.id)
@@ -296,6 +310,7 @@ def _upsert_subcategory(tenant_id: int, payload: dict):
     row.name = (payload.get("name") or row.name or "").strip()
     category_local_id = payload.get("category_id")
     row.category_id = _resolve_entity_id(tenant_id, "category", category_local_id)
+    _apply_timestamps(row, payload)
     if created:
         db.session.flush()
         _ensure_mapping(tenant_id, "subcategory", local_id, row.id)
@@ -321,6 +336,7 @@ def _upsert_menu_item(tenant_id: int, payload: dict):
     row.image_url = payload.get("image_url") or row.image_url
     row.station_id = _resolve_entity_id(tenant_id, "station", payload.get("station_id"))
     row.subcategory_id = _resolve_entity_id(tenant_id, "subcategory", payload.get("subcategory_id"))
+    _apply_timestamps(row, payload)
     if created:
         db.session.flush()
         _ensure_mapping(tenant_id, "menu_item", local_id, row.id)
@@ -355,6 +371,7 @@ def _upsert_inventory_item(tenant_id: int, payload: dict):
     row.container_size_ml = payload.get("container_size_ml", row.container_size_ml)
     row.default_shot_ml = payload.get("default_shot_ml", row.default_shot_ml)
     row.is_active = bool(payload.get("is_active", True))
+    _apply_timestamps(row, payload)
     if created:
         db.session.flush()
         _ensure_mapping(tenant_id, "inventory_item", local_id, row.id)
@@ -376,6 +393,7 @@ def _upsert_inventory_menu_link(tenant_id: int, payload: dict):
     row.deduction_ratio = payload.get("deduction_ratio", row.deduction_ratio)
     row.serving_type = payload.get("serving_type") or row.serving_type
     row.serving_value = payload.get("serving_value", row.serving_value)
+    _apply_timestamps(row, payload)
 
 
 def _upsert_store_stock(tenant_id: int, payload: dict):
@@ -387,6 +405,7 @@ def _upsert_store_stock(tenant_id: int, payload: dict):
         row = StoreStock(tenant_id=tenant_id, inventory_item_id=inventory_id)
         db.session.add(row)
     row.quantity = payload.get("quantity", row.quantity or 0.0)
+    _apply_timestamps(row, payload)
 
 
 def _upsert_station_stock(tenant_id: int, payload: dict):
@@ -403,6 +422,7 @@ def _upsert_station_stock(tenant_id: int, payload: dict):
         row = StationStock(tenant_id=tenant_id, station_id=station_id, inventory_item_id=inventory_id)
         db.session.add(row)
     row.quantity = payload.get("quantity", row.quantity or 0.0)
+    _apply_timestamps(row, payload)
 
 
 def _upsert_stock_purchase(tenant_id: int, payload: dict):
@@ -426,6 +446,7 @@ def _upsert_stock_purchase(tenant_id: int, payload: dict):
     created_at = _parse_datetime(payload.get("created_at"))
     if created_at:
         row.created_at = created_at
+    _apply_timestamps(row, payload)
     if created:
         db.session.flush()
         _ensure_mapping(tenant_id, "stock_purchase", local_id, row.id)
@@ -453,6 +474,7 @@ def _upsert_stock_transfer(tenant_id: int, payload: dict):
     created_at = _parse_datetime(payload.get("created_at"))
     if created_at:
         row.created_at = created_at
+    _apply_timestamps(row, payload)
     if created:
         db.session.flush()
         _ensure_mapping(tenant_id, "stock_transfer", local_id, row.id)
@@ -489,6 +511,7 @@ def _upsert_station_stock_snapshot(tenant_id: int, payload: dict):
         row.sold_quantity = payload.get("sold_quantity", row.sold_quantity)
         row.void_quantity = payload.get("void_quantity", row.void_quantity)
         row.remaining_quantity = payload.get("remaining_quantity", row.remaining_quantity)
+    _apply_timestamps(row, payload)
 
 
 def _upsert_store_stock_snapshot(tenant_id: int, payload: dict):
@@ -517,6 +540,7 @@ def _upsert_store_stock_snapshot(tenant_id: int, payload: dict):
         row.purchased_quantity = payload.get("purchased_quantity", row.purchased_quantity)
         row.transferred_out_quantity = payload.get("transferred_out_quantity", row.transferred_out_quantity)
         row.closing_quantity = payload.get("closing_quantity", row.closing_quantity)
+    _apply_timestamps(row, payload)
 
 
 def _apply_sync_event(tenant_id: int, store_id: int, entity_type: str, payload: dict):
