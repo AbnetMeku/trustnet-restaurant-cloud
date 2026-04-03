@@ -205,14 +205,18 @@ def _sync_payload_category(row: Category):
 
 
 def _sync_payload_subcategory(row: SubCategory):
+    category = row.category if hasattr(row, "category") else None
     return {
         "id": row.id,
         "name": row.name,
         "category_id": row.category_id,
+        "category_name": category.name if category else None,
     }
 
 
 def _sync_payload_menu_item(row: MenuItem):
+    subcategory = row.subcategory if hasattr(row, "subcategory") else None
+    category = subcategory.category if subcategory else None
     return {
         "id": row.id,
         "name": row.name,
@@ -223,6 +227,9 @@ def _sync_payload_menu_item(row: MenuItem):
         "is_available": row.is_available,
         "station_id": row.station_id,
         "subcategory_id": row.subcategory_id,
+        "station_name": row.station.name if row.station else None,
+        "subcategory_name": subcategory.name if subcategory else None,
+        "category_name": category.name if category else None,
         "image_url": row.image_url,
     }
 
@@ -249,10 +256,14 @@ def _sync_payload_inventory_item(row: InventoryItem):
 
 
 def _sync_payload_inventory_menu_link(row: InventoryMenuLink):
+    inventory_item = row.inventory_item if hasattr(row, "inventory_item") else None
+    menu_item = row.menu_item if hasattr(row, "menu_item") else None
     return {
         "id": row.id,
         "inventory_item_id": row.inventory_item_id,
         "menu_item_id": row.menu_item_id,
+        "inventory_item_name": inventory_item.name if inventory_item else None,
+        "menu_item_name": menu_item.name if menu_item else None,
         "deduction_ratio": row.deduction_ratio,
         "serving_type": row.serving_type,
         "serving_value": row.serving_value,
@@ -260,24 +271,32 @@ def _sync_payload_inventory_menu_link(row: InventoryMenuLink):
 
 
 def _sync_payload_store_stock(row: StoreStock):
+    inventory_item = row.inventory_item if hasattr(row, "inventory_item") else None
     return {
         "inventory_item_id": row.inventory_item_id,
+        "inventory_item_name": inventory_item.name if inventory_item else None,
         "quantity": row.quantity,
     }
 
 
 def _sync_payload_station_stock(row: StationStock):
+    inventory_item = row.inventory_item if hasattr(row, "inventory_item") else None
+    station = row.station if hasattr(row, "station") else None
     return {
         "station_id": row.station_id,
         "inventory_item_id": row.inventory_item_id,
+        "station_name": station.name if station else None,
+        "inventory_item_name": inventory_item.name if inventory_item else None,
         "quantity": row.quantity,
     }
 
 
 def _sync_payload_stock_purchase(row: StockPurchase):
+    inventory_item = row.inventory_item if hasattr(row, "inventory_item") else None
     return {
         "id": row.id,
         "inventory_item_id": row.inventory_item_id,
+        "inventory_item_name": inventory_item.name if inventory_item else None,
         "quantity": row.quantity,
         "unit_price": row.unit_price,
         "status": row.status,
@@ -286,10 +305,14 @@ def _sync_payload_stock_purchase(row: StockPurchase):
 
 
 def _sync_payload_stock_transfer(row: StockTransfer):
+    inventory_item = row.inventory_item if hasattr(row, "inventory_item") else None
+    station = row.station if hasattr(row, "station") else None
     return {
         "id": row.id,
         "inventory_item_id": row.inventory_item_id,
         "station_id": row.station_id,
+        "inventory_item_name": inventory_item.name if inventory_item else None,
+        "station_name": station.name if station else None,
         "quantity": row.quantity,
         "status": row.status,
         "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -297,9 +320,13 @@ def _sync_payload_stock_transfer(row: StockTransfer):
 
 
 def _sync_payload_station_stock_snapshot(row: StationStockSnapshot):
+    inventory_item = row.inventory_item if hasattr(row, "inventory_item") else None
+    station = row.station if hasattr(row, "station") else None
     return {
         "station_id": row.station_id,
         "inventory_item_id": row.inventory_item_id,
+        "station_name": station.name if station else None,
+        "inventory_item_name": inventory_item.name if inventory_item else None,
         "snapshot_date": row.snapshot_date.isoformat() if row.snapshot_date else None,
         "start_of_day_quantity": row.start_of_day_quantity,
         "added_quantity": row.added_quantity,
@@ -310,8 +337,10 @@ def _sync_payload_station_stock_snapshot(row: StationStockSnapshot):
 
 
 def _sync_payload_store_stock_snapshot(row: StoreStockSnapshot):
+    inventory_item = row.inventory_item if hasattr(row, "inventory_item") else None
     return {
         "inventory_item_id": row.inventory_item_id,
+        "inventory_item_name": inventory_item.name if inventory_item else None,
         "snapshot_date": row.snapshot_date.isoformat() if row.snapshot_date else None,
         "opening_quantity": row.opening_quantity,
         "purchased_quantity": row.purchased_quantity,
