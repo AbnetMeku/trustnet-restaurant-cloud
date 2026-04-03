@@ -24,7 +24,7 @@ const PDF_THEME = {
   totalBarText: [255, 255, 255],
 };
 
-const ENABLE_PDF_CUSTOM_FONT = import.meta.env.VITE_ENABLE_PDF_FONT === "true";
+const ENABLE_PDF_CUSTOM_FONT = true;
 
 async function applyEthiopicFontIfAvailable(pdf) {
   try {
