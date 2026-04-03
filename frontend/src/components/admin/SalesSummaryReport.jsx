@@ -205,6 +205,10 @@ export default function SalesSummaryReport({ darkMode }) {
       pdf.setFont("helvetica", "normal");
     }
 
+    const canUseBold =
+      !hasEthiopicFont ||
+      Boolean(pdf.getFontList?.()?.NotoSerifEthiopic?.includes("bold"));
+
     const addNewPageIfNeeded = (requiredHeight) => {
       if (yPosition + requiredHeight > pageHeight - margin) {
         pdf.addPage();
@@ -294,7 +298,7 @@ export default function SalesSummaryReport({ darkMode }) {
             if (hookData.section !== "body") return;
             if (hookData.row.index !== tableRows.length - 1) return;
             hookData.cell.styles.fillColor = PDF_THEME.subtotalRow;
-            hookData.cell.styles.fontStyle = "bold";
+            hookData.cell.styles.fontStyle = canUseBold ? "bold" : "normal";
           },
         });
 
