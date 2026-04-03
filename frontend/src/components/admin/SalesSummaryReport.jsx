@@ -32,6 +32,15 @@ async function applyEthiopicFontIfAvailable(pdf) {
     if (!response.ok) return false;
 
     const fontArrayBuffer = await response.arrayBuffer();
+    const fontHeader = new Uint8Array(fontArrayBuffer.slice(0, 4));
+    const isTtf = fontHeader[0] === 0x00 && fontHeader[1] === 0x01;
+    const isOtf =
+      fontHeader[0] === 0x4f &&
+      fontHeader[1] === 0x54 &&
+      fontHeader[2] === 0x54 &&
+      fontHeader[3] === 0x4f;
+    if (!isTtf && !isOtf) return false;
+
     const fontBase64 = btoa(
       new Uint8Array(fontArrayBuffer).reduce(
         (acc, byte) => acc + String.fromCharCode(byte),
@@ -39,10 +48,14 @@ async function applyEthiopicFontIfAvailable(pdf) {
       )
     );
 
-    pdf.addFileToVFS("NotoSerifEthiopic-Regular.ttf", fontBase64);
-    pdf.addFont("NotoSerifEthiopic-Regular.ttf", "NotoSerifEthiopic", "normal");
-    pdf.setFont("NotoSerifEthiopic");
-    return true;
+    try {
+      pdf.addFileToVFS("NotoSerifEthiopic-Regular.ttf", fontBase64);
+      pdf.addFont("NotoSerifEthiopic-Regular.ttf", "NotoSerifEthiopic", "normal");
+      pdf.setFont("NotoSerifEthiopic");
+      return true;
+    } catch {
+      return false;
+    }
   } catch {
     return false;
   }
