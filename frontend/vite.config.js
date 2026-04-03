@@ -5,13 +5,15 @@ import path from "path";
 import { VitePWA } from "vite-plugin-pwa";
 
 const enablePwa = process.env.VITE_ENABLE_PWA === "true";
+const enableLegacy = process.env.VITE_ENABLE_LEGACY === "true";
 
 export default defineConfig({
   plugins: [
     react(),
-    legacy({
-      targets: ['ios >= 12']
-    }),
+    enableLegacy &&
+      legacy({
+        targets: ["ios >= 12"],
+      }),
 
     // ✅ Added PWA plugin
     VitePWA({
@@ -56,7 +58,7 @@ export default defineConfig({
         ]
       }
     }),
-  ],
+  ].filter(Boolean),
 
   resolve: {
     alias: {
