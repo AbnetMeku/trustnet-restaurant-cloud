@@ -24,6 +24,8 @@ const PDF_THEME = {
   totalBarText: [255, 255, 255],
 };
 
+const ENABLE_PDF_CUSTOM_FONT = import.meta.env.VITE_ENABLE_PDF_FONT === "true";
+
 async function applyEthiopicFontIfAvailable(pdf) {
   try {
     const response = await fetch("/fonts/NotoSerifEthiopic-Regular.ttf");
@@ -183,7 +185,9 @@ export default function SalesSummaryReport({ darkMode }) {
     const lineHeight = 20;
     let yPosition = margin;
 
-    const hasEthiopicFont = await applyEthiopicFontIfAvailable(pdf);
+    const hasEthiopicFont = ENABLE_PDF_CUSTOM_FONT
+      ? await applyEthiopicFontIfAvailable(pdf)
+      : false;
     if (!hasEthiopicFont) {
       pdf.setFont("helvetica", "normal");
     }
