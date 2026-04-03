@@ -413,7 +413,6 @@ def update_branding():
     row.kitchen_tag_subcategory_id = payload.get("kitchen_tag_subcategory_id")
     row.kitchen_tag_subcategory_ids = payload.get("kitchen_tag_subcategory_ids") or []
     db.session.flush()
-    _emit_sync_event(tenant_id, "branding", row.id, "upsert", _sync_payload_branding(row))
     db.session.commit()
     return get_branding()
 

@@ -217,27 +217,34 @@ export default function SalesSummaryReport({ darkMode }) {
         pdf.text(subcat.name, margin + 20, yPosition);
         yPosition += lineHeight + 5;
 
-        const tableData = subcat.items.map((item) => [
-          item.name,
-          item.vip_status,
-          String(item.quantity),
-          Number(item.average_price || 0).toFixed(2),
-          Number(item.total_amount || 0).toFixed(2),
-        ]);
+        const items = Array.isArray(subcat.items) ? subcat.items : [];
+        const tableRows = items.map((item) => ({
+          item: item.name || "",
+          vip_status: item.vip_status || "",
+          quantity: String(item.quantity ?? 0),
+          unit_price: Number(item.average_price || 0).toFixed(2),
+          total: Number(item.total_amount || 0).toFixed(2),
+        }));
 
-        tableData.push([
-          `Subtotal for ${subcat.name}`,
-          "",
-          String(subcat.total_qty),
-          "",
-          Number(subcat.total_amount || 0).toFixed(2),
-        ]);
+        tableRows.push({
+          item: `Subtotal for ${subcat.name}`,
+          vip_status: "",
+          quantity: String(subcat.total_qty ?? 0),
+          unit_price: "",
+          total: Number(subcat.total_amount || 0).toFixed(2),
+        });
 
         addNewPageIfNeeded(100);
         autoTable(pdf, {
           startY: yPosition,
-          head: [["Item", "VIP Status", "Quantity", "Unit Price", "Total"]],
-          body: tableData,
+          columns: [
+            { header: "Item", dataKey: "item" },
+            { header: "VIP Status", dataKey: "vip_status" },
+            { header: "Quantity", dataKey: "quantity" },
+            { header: "Unit Price", dataKey: "unit_price" },
+            { header: "Total", dataKey: "total" },
+          ],
+          body: tableRows,
           theme: "grid",
           headStyles: {
             fillColor: PDF_THEME.tableHeadBg,
@@ -260,15 +267,15 @@ export default function SalesSummaryReport({ darkMode }) {
             cellPadding: 8,
           },
           columnStyles: {
-            0: { cellWidth: "auto" },
-            1: { cellWidth: 80 },
-            2: { cellWidth: 60, halign: "right" },
-            3: { cellWidth: 60, halign: "right" },
-            4: { cellWidth: 80, halign: "right" },
+            item: { cellWidth: "auto" },
+            vip_status: { cellWidth: 80 },
+            quantity: { cellWidth: 60, halign: "right" },
+            unit_price: { cellWidth: 60, halign: "right" },
+            total: { cellWidth: 80, halign: "right" },
           },
           didParseCell: (hookData) => {
             if (hookData.section !== "body") return;
-            if (hookData.row.index !== tableData.length - 1) return;
+            if (hookData.row.index !== tableRows.length - 1) return;
             hookData.cell.styles.fillColor = PDF_THEME.subtotalRow;
             hookData.cell.styles.fontStyle = "bold";
           },

@@ -41,7 +41,6 @@ SYNCED_ENTITY_TYPES = {
     "category",
     "subcategory",
     "menu_item",
-    "branding",
     "inventory_item",
     "inventory_menu_link",
     "store_stock",
@@ -77,7 +76,6 @@ def _reset_tenant_data(tenant_id: int) -> None:
     delete_if_exists(WaiterProfile, "waiter_profiles")
     delete_if_exists(Station, "stations")
     delete_if_exists(InventoryItem, "inventory_items")
-    delete_if_exists(BrandingSettings, "branding_settings")
     delete_if_exists(SyncEvent, "sync_events")
     delete_if_exists(SyncIdMap, "sync_id_map")
 
@@ -536,8 +534,6 @@ def _apply_sync_event(tenant_id: int, store_id: int, entity_type: str, payload: 
         _upsert_subcategory(tenant_id, payload)
     elif entity_type == "menu_item":
         _upsert_menu_item(tenant_id, payload)
-    elif entity_type == "branding":
-        _upsert_branding(tenant_id, payload)
     elif entity_type == "inventory_item":
         _upsert_inventory_item(tenant_id, payload)
     elif entity_type == "inventory_menu_link":
@@ -591,10 +587,6 @@ def _apply_delete_event(tenant_id: int, store_id: int, entity_type: str, payload
                 store_id=store_id,
                 source_order_id=str(order_id),
             ).delete(synchronize_session=False)
-        return
-
-    if entity_type == "branding":
-        BrandingSettings.query.filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
         return
 
     cloud_id = _resolve_entity_id(tenant_id, entity_type, local_id)
