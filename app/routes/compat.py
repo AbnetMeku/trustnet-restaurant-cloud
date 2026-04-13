@@ -18,6 +18,7 @@ from ..models import (
     InventoryMenuLink,
     MenuItem,
     OrderSummary,
+    PrintJob,
     Station,
     StationStock,
     StationStockSnapshot,
@@ -1472,24 +1473,110 @@ def reopen_waiter_day(waiter_id: str):
 @compat_bp.get("/print-jobs")
 @jwt_required()
 def list_print_jobs():
-    return jsonify([])
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    status = request.args.get("status")
+    query = PrintJob.query.filter_by(tenant_id=tenant_id)
+    if status:
+        query = query.filter_by(status=status)
+    jobs = query.order_by(PrintJob.created_at.desc()).all()
+    return jsonify(
+        [
+            {
+                "id": row.id,
+                "order_id": row.order_id,
+                "station_id": row.station_id,
+                "station_name": row.station.name if row.station_id and row.station else row.station_name,
+                "type": row.type,
+                "items_data": row.items_data,
+                "status": row.status,
+                "error_message": row.error_message,
+                "attempts": row.attempts,
+                "printed_at": row.printed_at.isoformat() if row.printed_at else None,
+                "retry_after": row.retry_after.isoformat() if row.retry_after else None,
+                "created_at": row.created_at.isoformat(),
+                "updated_at": row.updated_at.isoformat(),
+            }
+            for row in jobs
+        ]
+    )
+
+
+@compat_bp.get("/print-jobs/station/<int:station_id>/pending")
+@jwt_required()
+def list_pending_station_print_jobs(station_id: int):
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    jobs = (
+        PrintJob.query.filter_by(tenant_id=tenant_id, station_id=station_id, status="pending")
+        .order_by(PrintJob.created_at.asc())
+        .all()
+    )
+    return jsonify(
+        [
+            {
+                "id": row.id,
+                "order_id": row.order_id,
+                "station_id": row.station_id,
+                "station_name": row.station.name if row.station_id and row.station else row.station_name,
+                "type": row.type,
+                "items_data": row.items_data,
+                "status": row.status,
+                "created_at": row.created_at.isoformat(),
+                "updated_at": row.updated_at.isoformat(),
+                "retry_after": row.retry_after.isoformat() if row.retry_after else None,
+            }
+            for row in jobs
+        ]
+    )
 
 
 @compat_bp.post("/print-jobs/<int:job_id>/printed")
 @jwt_required()
 def mark_printed(job_id: int):
-    return jsonify({"id": job_id, "status": "printed"})
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    row = PrintJob.query.filter_by(id=job_id, tenant_id=tenant_id).first()
+    if row is None:
+        return jsonify({"error": "Print job not found"}), 404
+    row.status = "printed"
+    row.printed_at = datetime.now(timezone.utc)
+    row.retry_after = None
+    row.error_message = None
+    db.session.commit()
+    return jsonify({"id": row.id, "status": row.status})
 
 
 @compat_bp.post("/print-jobs/<int:job_id>/retry")
 @jwt_required()
 def retry_print_job(job_id: int):
-    return jsonify({"id": job_id, "status": "pending"})
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    row = PrintJob.query.filter_by(id=job_id, tenant_id=tenant_id).first()
+    if row is None:
+        return jsonify({"error": "Print job not found"}), 404
+    row.status = "pending"
+    row.retry_after = None
+    row.error_message = None
+    db.session.commit()
+    return jsonify({"id": row.id, "status": row.status})
 
 
 @compat_bp.delete("/print-jobs/<int:job_id>")
 @jwt_required()
 def delete_print_job(job_id: int):
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    row = PrintJob.query.filter_by(id=job_id, tenant_id=tenant_id).first()
+    if row is None:
+        return jsonify({"error": "Print job not found"}), 404
+    db.session.delete(row)
+    db.session.commit()
     return jsonify({"id": job_id, "deleted": True})
 
 

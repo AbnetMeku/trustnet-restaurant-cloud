@@ -16,6 +16,7 @@ from ..models import (
     InventoryMenuLink,
     MenuItem,
     OrderSummary,
+    PrintJob,
     Station,
     StationStock,
     StationStockSnapshot,
@@ -50,6 +51,7 @@ SYNCED_ENTITY_TYPES = {
     "station_stock_snapshot",
     "store_stock_snapshot",
     "order",
+    "print_job",
 }
 
 
@@ -61,6 +63,7 @@ def _reset_tenant_data(tenant_id: int) -> None:
             db.session.query(model).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
 
     delete_if_exists(OrderSummary, "order_summaries")
+    delete_if_exists(PrintJob, "print_jobs")
     delete_if_exists(StationStockSnapshot, "station_stock_snapshots")
     delete_if_exists(StoreStockSnapshot, "store_stock_snapshots")
     delete_if_exists(StockTransfer, "stock_transfers")
@@ -543,6 +546,46 @@ def _upsert_store_stock_snapshot(tenant_id: int, payload: dict):
     _apply_timestamps(row, payload)
 
 
+def _upsert_print_job(tenant_id: int, store_id: int | None, payload: dict):
+    local_id = payload.get("id")
+    cloud_id = _resolve_entity_id(tenant_id, "print_job", local_id)
+    row = PrintJob.query.get(cloud_id) if cloud_id else None
+    created = False
+    if row is None:
+        row = PrintJob()
+        db.session.add(row)
+        created = True
+
+    row.tenant_id = tenant_id
+    row.store_id = store_id
+    row.order_id = str(payload.get("order_id") or payload.get("source_order_id") or "") or None
+    row.type = (payload.get("type") or row.type or "station").strip()
+    row.items_data = payload.get("items_data") or {}
+    row.status = (payload.get("status") or row.status or "pending").strip()
+    row.error_message = payload.get("error_message")
+    row.attempts = int(payload.get("attempts") or 0)
+    row.printed_at = _parse_datetime(payload.get("printed_at"))
+    row.retry_after = _parse_datetime(payload.get("retry_after"))
+
+    station_cloud_id = payload.get("station_id")
+    if station_cloud_id is not None:
+        mapped_station_id = _resolve_entity_id(tenant_id, "station", station_cloud_id)
+        if mapped_station_id is None:
+            station_name = (payload.get("station_name") or "").strip() or None
+            if station_name:
+                station_match = Station.query.filter_by(tenant_id=tenant_id, name=station_name).first()
+                if station_match:
+                    _ensure_mapping(tenant_id, "station", station_cloud_id, station_match.id)
+                    mapped_station_id = station_match.id
+        row.station_id = mapped_station_id
+    row.station_name = payload.get("station_name") or row.station_name
+
+    _apply_timestamps(row, payload)
+    if created:
+        db.session.flush()
+        _ensure_mapping(tenant_id, "print_job", local_id, row.id)
+
+
 def _apply_sync_event(tenant_id: int, store_id: int, entity_type: str, payload: dict):
     if entity_type == "user":
         _upsert_user(tenant_id, payload)
@@ -574,6 +617,8 @@ def _apply_sync_event(tenant_id: int, store_id: int, entity_type: str, payload: 
         _upsert_station_stock_snapshot(tenant_id, payload)
     elif entity_type == "store_stock_snapshot":
         _upsert_store_stock_snapshot(tenant_id, payload)
+    elif entity_type == "print_job":
+        _upsert_print_job(tenant_id, store_id, payload)
     elif entity_type == "order":
         amount = Decimal(str((payload or {}).get("total_amount") or "0"))
         source_order_id = str((payload or {}).get("order_id") or "")
@@ -633,6 +678,7 @@ def _apply_delete_event(tenant_id: int, store_id: int, entity_type: str, payload
         "stock_transfer": StockTransfer,
         "station_stock_snapshot": StationStockSnapshot,
         "store_stock_snapshot": StoreStockSnapshot,
+        "print_job": PrintJob,
     }.get(entity_type)
 
     if model is None:

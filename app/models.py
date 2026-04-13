@@ -227,6 +227,26 @@ class OrderSummary(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
 
 
+class PrintJob(db.Model):
+    __tablename__ = "print_jobs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tenant_id = db.Column(db.Integer, db.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    store_id = db.Column(db.Integer, db.ForeignKey("stores.id", ondelete="SET NULL"), nullable=True, index=True)
+    order_id = db.Column(db.String(64), nullable=True)
+    station_id = db.Column(db.Integer, db.ForeignKey("stations.id", ondelete="SET NULL"), nullable=True)
+    station_name = db.Column(db.String(120), nullable=True)
+    type = db.Column(db.String(20), nullable=False, default="station")
+    items_data = db.Column(db.JSON, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="pending")
+    error_message = db.Column(db.Text, nullable=True)
+    printed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    retry_after = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+
+
 class SyncEvent(db.Model):
     __tablename__ = "sync_events"
 
