@@ -1121,7 +1121,56 @@ def order_history_raw():
     tenant_id, error = _tenant_id_required()
     if error:
         return error
-    rows = OrderSummary.query.filter_by(tenant_id=tenant_id).order_by(OrderSummary.created_at.desc()).limit(200).all()
+
+    query = OrderSummary.query.filter_by(tenant_id=tenant_id)
+
+    date_str = request.args.get("date")
+    if date_str:
+        try:
+            target_day = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
+        start_dt, end_dt = _business_day_bounds_utc(target_day, tenant_id)
+        query = query.filter(OrderSummary.created_at >= start_dt, OrderSummary.created_at < end_dt)
+    else:
+        return jsonify({"error": "date query param is required"}), 400
+
+    status = (request.args.get("status") or "").strip().lower()
+    if status:
+        if status not in {"open", "closed", "paid"}:
+            return jsonify({"error": "Invalid status filter."}), 400
+        query = query.filter(OrderSummary.status == status)
+
+    user_id = request.args.get("user_id")
+    if user_id:
+        try:
+            waiter = User.query.filter_by(id=int(user_id), tenant_id=tenant_id).first()
+        except ValueError:
+            return jsonify({"error": "Invalid user_id."}), 400
+        if waiter is None:
+            return jsonify({"error": "User not found."}), 404
+        query = query.filter(OrderSummary.source_user_name == waiter.username)
+
+    table_filter = (request.args.get("table") or "").strip()
+    if table_filter:
+        query = query.filter(OrderSummary.table_number.ilike(f"%{table_filter}%"))
+
+    page_str = request.args.get("page", "1")
+    page_size_str = request.args.get("page_size", "50")
+    try:
+        page = max(int(page_str), 1)
+        page_size = int(page_size_str)
+    except ValueError:
+        return jsonify({"error": "Invalid pagination params. page and page_size must be integers."}), 400
+
+    page_size = min(max(page_size, 1), 200)
+    total = query.count()
+    rows = (
+        query.order_by(OrderSummary.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
     results = [
         {
             "id": row.id,
@@ -1144,16 +1193,17 @@ def order_history_raw():
         }
         for row in rows
     ]
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 1
     return jsonify(
         {
             "orders": results,
             "pagination": {
-                "page": 1,
-                "page_size": len(results),
-                "total": len(results),
-                "total_pages": 1,
-                "has_next": False,
-                "has_prev": False,
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_prev": page > 1,
             },
         }
     )

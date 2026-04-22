@@ -324,7 +324,7 @@ export default function AdminDashboard() {
 
             {active === "order" && (
               <Card className="admin-card p-5 md:p-6 w-full overflow-auto max-h-[82vh]" data-testid="admin-panel-order">
-                <OrderTracker />
+                <OrderTracker businessDayStartTime={branding.business_day_start_time} />
               </Card>
             )}
 

@@ -11,7 +11,7 @@ import { eatBusinessDateISO, formatEatTime } from "@/lib/timezone";
 import { getApiErrorMessage } from "@/lib/apiError";
 import ModalPortal from "@/components/ui/ModalPortal";
 
-export default function AdminOrders() {
+export default function AdminOrders({ businessDayStartTime }) {
   const { authToken } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,8 +35,12 @@ export default function AdminOrders() {
   const [filterTable, setFilterTable] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
 
-  const todayStr = eatBusinessDateISO();
+  const todayStr = useMemo(
+    () => eatBusinessDateISO(new Date(), businessDayStartTime),
+    [businessDayStartTime]
+  );
   const [selectedDate, setSelectedDate] = useState(todayStr);
+  const [hasManualDateSelection, setHasManualDateSelection] = useState(false);
   const isDarkMode = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
   const waiterOptions = useMemo(
     () =>
@@ -115,6 +119,12 @@ export default function AdminOrders() {
   useEffect(() => {
     setPage(1);
   }, [selectedDate, filterStatus, filterWaiter, filterTable]);
+
+  useEffect(() => {
+    if (!hasManualDateSelection) {
+      setSelectedDate(todayStr);
+    }
+  }, [hasManualDateSelection, todayStr]);
 
   useEffect(() => {
     async function loadWaiters() {
@@ -322,7 +332,10 @@ export default function AdminOrders() {
               <input
                 type="date"
                 value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
+                onChange={(e) => {
+                  setHasManualDateSelection(true);
+                  setSelectedDate(e.target.value);
+                }}
                 className="h-10 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900 shadow-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
               />
             </label>
