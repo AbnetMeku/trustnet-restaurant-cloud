@@ -93,6 +93,29 @@ def me():
     )
 
 
+@auth_bp.put("/auth/update-password")
+@jwt_required()
+def update_password():
+    user = User.query.get(int(get_jwt_identity()))
+    if user is None:
+        return jsonify({"error": "user not found"}), 404
+
+    payload = request.get_json(silent=True) or {}
+    old_password = payload.get("old_password") or ""
+    new_password = payload.get("new_password") or ""
+
+    if not old_password or not new_password:
+        return jsonify({"error": "old_password and new_password are required"}), 400
+
+    if not check_password_hash(user.password_hash, old_password):
+        return jsonify({"error": "invalid old password"}), 401
+
+    user.password_hash = generate_password_hash(new_password)
+    db.session.commit()
+
+    return jsonify({"status": "ok", "message": "password updated successfully"}), 200
+
+
 @auth_bp.post("/auth/tenant-users")
 @roles_required("super_admin")
 def create_tenant_user():

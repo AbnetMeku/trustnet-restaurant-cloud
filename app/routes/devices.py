@@ -62,7 +62,7 @@ def activate_device():
     db.session.commit()
 
     policy = effective_policy_payload(tenant_id)
-    grace_days = policy.get("grace_period_days") or 0
+    grace_days = int(policy.get("grace_period_days") or 0)
     return jsonify(
         {
             "tenant_id": tenant_id,

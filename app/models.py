@@ -291,6 +291,7 @@ class InventoryItem(db.Model):
     servings_per_unit = db.Column(db.Float, nullable=False, default=1.0)
     container_size_ml = db.Column(db.Float, nullable=False, default=1.0)
     default_shot_ml = db.Column(db.Float, nullable=False, default=1.0)
+    shots_per_bottle = db.Column(db.Float, nullable=False, default=0.0)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
 
@@ -396,10 +397,11 @@ class StationStockSnapshot(db.Model):
     snapshot_date = db.Column(db.Date, nullable=False)
 
     start_of_day_quantity = db.Column(db.Float, nullable=False)
-    added_quantity = db.Column(db.Float, nullable=False, default=0.0)
+    added_quantity = db.Column(db.Float, nullable=True, default=0.0)
     sold_quantity = db.Column(db.Float, nullable=False, default=0.0)
     void_quantity = db.Column(db.Float, nullable=False, default=0.0)
     remaining_quantity = db.Column(db.Float, nullable=False, default=0.0)
+    opening_adjusted = db.Column(db.Boolean, nullable=False, default=False)
 
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
 
@@ -421,5 +423,6 @@ class StoreStockSnapshot(db.Model):
     purchased_quantity = db.Column(db.Float, nullable=False, default=0.0)
     transferred_out_quantity = db.Column(db.Float, nullable=False, default=0.0)
     closing_quantity = db.Column(db.Float, nullable=False, default=0.0)
+    opening_adjusted = db.Column(db.Boolean, nullable=False, default=False)
 
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)

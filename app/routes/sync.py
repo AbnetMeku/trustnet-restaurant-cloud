@@ -60,7 +60,10 @@ def _reset_tenant_data(tenant_id: int) -> None:
 
     def delete_if_exists(model, table_name: str) -> None:
         if inspector.has_table(table_name):
-            db.session.query(model).filter_by(tenant_id=tenant_id).delete(synchronize_session=False)
+            query = db.session.query(model).filter_by(tenant_id=tenant_id)
+            if model == User:
+                query = query.filter(User.role != "tenant_admin")
+            query.delete(synchronize_session=False)
 
     delete_if_exists(OrderSummary, "order_summaries")
     delete_if_exists(PrintJob, "print_jobs")
@@ -373,6 +376,7 @@ def _upsert_inventory_item(tenant_id: int, payload: dict):
     row.servings_per_unit = payload.get("servings_per_unit", row.servings_per_unit)
     row.container_size_ml = payload.get("container_size_ml", row.container_size_ml)
     row.default_shot_ml = payload.get("default_shot_ml", row.default_shot_ml)
+    row.shots_per_bottle = payload.get("shots_per_bottle", row.shots_per_bottle if hasattr(row, 'shots_per_bottle') else 0.0)
     row.is_active = bool(payload.get("is_active", True))
     _apply_timestamps(row, payload)
     if created:
@@ -502,18 +506,22 @@ def _upsert_station_stock_snapshot(tenant_id: int, payload: dict):
             inventory_item_id=inventory_id,
             snapshot_date=snapshot_date,
             start_of_day_quantity=payload.get("start_of_day_quantity", 0.0),
-            added_quantity=payload.get("added_quantity", 0.0),
+            added_quantity=payload.get("added_quantity"),
             sold_quantity=payload.get("sold_quantity", 0.0),
             void_quantity=payload.get("void_quantity", 0.0),
             remaining_quantity=payload.get("remaining_quantity", 0.0),
+            opening_adjusted=bool(payload.get("opening_adjusted", False)),
         )
         db.session.add(row)
     else:
         row.start_of_day_quantity = payload.get("start_of_day_quantity", row.start_of_day_quantity)
-        row.added_quantity = payload.get("added_quantity", row.added_quantity)
+        if "added_quantity" in payload:
+            row.added_quantity = payload.get("added_quantity")
         row.sold_quantity = payload.get("sold_quantity", row.sold_quantity)
         row.void_quantity = payload.get("void_quantity", row.void_quantity)
         row.remaining_quantity = payload.get("remaining_quantity", row.remaining_quantity)
+        if "opening_adjusted" in payload:
+            row.opening_adjusted = bool(payload.get("opening_adjusted"))
     _apply_timestamps(row, payload)
 
 
@@ -536,6 +544,7 @@ def _upsert_store_stock_snapshot(tenant_id: int, payload: dict):
             purchased_quantity=payload.get("purchased_quantity", 0.0),
             transferred_out_quantity=payload.get("transferred_out_quantity", 0.0),
             closing_quantity=payload.get("closing_quantity", 0.0),
+            opening_adjusted=bool(payload.get("opening_adjusted", False)),
         )
         db.session.add(row)
     else:
@@ -543,6 +552,8 @@ def _upsert_store_stock_snapshot(tenant_id: int, payload: dict):
         row.purchased_quantity = payload.get("purchased_quantity", row.purchased_quantity)
         row.transferred_out_quantity = payload.get("transferred_out_quantity", row.transferred_out_quantity)
         row.closing_quantity = payload.get("closing_quantity", row.closing_quantity)
+        if "opening_adjusted" in payload:
+            row.opening_adjusted = bool(payload.get("opening_adjusted"))
     _apply_timestamps(row, payload)
 
 
