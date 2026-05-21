@@ -55,7 +55,7 @@ SYNCED_ENTITY_TYPES = {
 }
 
 
-def _reset_tenant_data(tenant_id: int) -> None:
+def _reset_tenant_data(tenant_id: int, inventory_only: bool = False) -> None:
     inspector = inspect(db.engine)
 
     def delete_if_exists(model, table_name: str) -> None:
@@ -65,8 +65,17 @@ def _reset_tenant_data(tenant_id: int) -> None:
                 query = query.filter(User.role != "tenant_admin")
             query.delete(synchronize_session=False)
 
-    delete_if_exists(OrderSummary, "order_summaries")
-    delete_if_exists(PrintJob, "print_jobs")
+    inventory_types = [
+        "inventory_item",
+        "inventory_menu_link",
+        "store_stock",
+        "station_stock",
+        "stock_purchase",
+        "stock_transfer",
+        "station_stock_snapshot",
+        "store_stock_snapshot",
+    ]
+
     delete_if_exists(StationStockSnapshot, "station_stock_snapshots")
     delete_if_exists(StoreStockSnapshot, "store_stock_snapshots")
     delete_if_exists(StockTransfer, "stock_transfers")
@@ -74,16 +83,29 @@ def _reset_tenant_data(tenant_id: int) -> None:
     delete_if_exists(StationStock, "station_stock")
     delete_if_exists(StoreStock, "store_stock")
     delete_if_exists(InventoryMenuLink, "inventory_menu_links")
-    delete_if_exists(MenuItem, "menu_items")
-    delete_if_exists(SubCategory, "subcategories")
-    delete_if_exists(Category, "categories")
-    delete_if_exists(Table, "tables")
-    delete_if_exists(User, "users")
-    delete_if_exists(WaiterProfile, "waiter_profiles")
-    delete_if_exists(Station, "stations")
     delete_if_exists(InventoryItem, "inventory_items")
-    delete_if_exists(SyncEvent, "sync_events")
-    delete_if_exists(SyncIdMap, "sync_id_map")
+
+    if not inventory_only:
+        delete_if_exists(OrderSummary, "order_summaries")
+        delete_if_exists(PrintJob, "print_jobs")
+        delete_if_exists(MenuItem, "menu_items")
+        delete_if_exists(SubCategory, "subcategories")
+        delete_if_exists(Category, "categories")
+        delete_if_exists(Table, "tables")
+        delete_if_exists(User, "users")
+        delete_if_exists(WaiterProfile, "waiter_profiles")
+        delete_if_exists(Station, "stations")
+        delete_if_exists(SyncEvent, "sync_events")
+        delete_if_exists(SyncIdMap, "sync_id_map")
+    else:
+        if inspector.has_table("sync_events"):
+            SyncEvent.query.filter_by(tenant_id=tenant_id).filter(
+                SyncEvent.entity_type.in_(inventory_types)
+            ).delete(synchronize_session=False)
+        if inspector.has_table("sync_id_map"):
+            SyncIdMap.query.filter_by(tenant_id=tenant_id).filter(
+                SyncIdMap.entity_type.in_(inventory_types)
+            ).delete(synchronize_session=False)
 
 
 def _parse_date(value):
@@ -708,6 +730,7 @@ def reset_sync_data():
     store_id = payload.get("store_id")
     device_id = (payload.get("device_id") or "").strip()
     confirm = payload.get("confirm")
+    inventory_only = payload.get("inventory_only") is True
 
     if not tenant_id:
         return jsonify({"error": "tenant_id is required"}), 400
@@ -738,7 +761,7 @@ def reset_sync_data():
         if device is None:
             return jsonify({"error": "device is not active"}), 403
 
-    _reset_tenant_data(tenant_id)
+    _reset_tenant_data(tenant_id, inventory_only=inventory_only)
     db.session.commit()
     return jsonify({"status": "ok"})
 
