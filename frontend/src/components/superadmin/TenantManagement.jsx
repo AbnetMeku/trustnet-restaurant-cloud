@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { getApiErrorMessage } from "@/lib/apiError";
 
 function ConfirmDialog({ open, title, description, onConfirm, onCancel, loading }) {
@@ -46,6 +47,12 @@ function ConfirmDialog({ open, title, description, onConfirm, onCancel, loading 
 }
 
 function ResetSyncDialog({ open, tenantName, storeLabel, onConfirm, onCancel, loading }) {
+  const [inventoryOnly, setInventoryOnly] = useState(false);
+
+  React.useEffect(() => {
+    if (open) setInventoryOnly(false);
+  }, [open]);
+
   return (
     <Dialog open={open} onOpenChange={(next) => !loading && !next && onCancel()}>
       <DialogContent className="sm:max-w-md border-slate-200 bg-white p-0 shadow-xl dark:border-slate-800 dark:bg-slate-900">
@@ -61,6 +68,12 @@ function ResetSyncDialog({ open, tenantName, storeLabel, onConfirm, onCancel, lo
             This will delete all cloud data for tenant <strong>{tenantName}</strong>
             {storeLabel ? ` (store ${storeLabel})` : ""}. The next device sync will re-upload a full snapshot.
           </p>
+          <div className="flex items-center space-x-2 mt-2 py-2">
+            <Checkbox id="inventory_only" checked={inventoryOnly} onCheckedChange={setInventoryOnly} />
+            <Label htmlFor="inventory_only" className="text-sm cursor-pointer font-normal text-slate-700 dark:text-slate-300">
+              Inventory Only (keep users & orders)
+            </Label>
+          </div>
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
             This action is permanent and cannot be undone.
           </p>
@@ -69,7 +82,7 @@ function ResetSyncDialog({ open, tenantName, storeLabel, onConfirm, onCancel, lo
           <Button variant="outline" className="border-slate-300 dark:border-slate-700" onClick={onCancel} disabled={loading}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={onConfirm} disabled={loading}>
+          <Button variant="destructive" onClick={() => onConfirm(inventoryOnly)} disabled={loading}>
             {loading ? "Resetting..." : "Reset Cloud Data"}
           </Button>
         </DialogFooter>
@@ -232,7 +245,7 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
     }
   };
 
-  const handleResetSync = async () => {
+  const handleResetSync = async (inventoryOnly = false) => {
     if (!resetTarget) return;
     const mainStore = getMainStore(resetTarget.stores);
     if (!mainStore?.id) {
@@ -247,6 +260,7 @@ export default function TenantManagement({ tenants, authToken, onRefresh }) {
           tenant_id: resetTarget.id,
           store_id: mainStore.id,
           confirm: true,
+          inventory_only: inventoryOnly,
         },
         {
           headers: {
