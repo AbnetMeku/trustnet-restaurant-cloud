@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   FaTable,
   FaStore,
@@ -30,6 +30,7 @@ import WaiterSummaryReport from "@/components/admin/WaiterSummaryReport";
 import OverView from "@/components/admin/OverView";
 import OrderTracker from "@/components/admin/OrderTracker";
 import PrintJobs from "@/components/admin/PrintJobs";
+import ProfileSettings from "@/components/admin/ProfileSettings";
 import { useBranding } from "@/hooks/useBranding";
 
 export default function AdminDashboard() {
@@ -119,6 +120,11 @@ export default function AdminDashboard() {
           id: "users",
           icon: FaUsers,
           label: "Users",
+        },
+        {
+          id: "profile",
+          icon: FaFileAlt,
+          label: "Profile",
         },
         {
           id: "tables",
@@ -290,6 +296,12 @@ export default function AdminDashboard() {
               <Card className="admin-card p-5 md:p-6 w-full" data-testid="admin-panel-users">
                 <UserManagement />
               </Card>
+            )}
+
+            {active === "profile" && (
+              <div data-testid="admin-panel-profile">
+                <ProfileSettings />
+              </div>
             )}
 
             {active === "tables" && (
