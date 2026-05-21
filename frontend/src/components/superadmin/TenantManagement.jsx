@@ -47,12 +47,6 @@ function ConfirmDialog({ open, title, description, onConfirm, onCancel, loading 
 }
 
 function ResetSyncDialog({ open, tenantName, storeLabel, onConfirm, onCancel, loading }) {
-  const [inventoryOnly, setInventoryOnly] = useState(false);
-
-  React.useEffect(() => {
-    if (open) setInventoryOnly(false);
-  }, [open]);
-
   return (
     <Dialog open={open} onOpenChange={(next) => !loading && !next && onCancel()}>
       <DialogContent className="sm:max-w-md border-slate-200 bg-white p-0 shadow-xl dark:border-slate-800 dark:bg-slate-900">
@@ -65,25 +59,22 @@ function ResetSyncDialog({ open, tenantName, storeLabel, onConfirm, onCancel, lo
         </DialogHeader>
         <div className="space-y-3 px-5 py-4">
           <p className="text-sm text-slate-600 dark:text-slate-300">
-            This will delete all cloud data for tenant <strong>{tenantName}</strong>
-            {storeLabel ? ` (store ${storeLabel})` : ""}. The next device sync will re-upload a full snapshot.
+            You can choose to reset <strong>all cloud data</strong> for tenant <strong>{tenantName}</strong>
+            {storeLabel ? ` (store ${storeLabel})` : ""} or <strong>only the inventory data</strong> (keeping users and orders intact).
           </p>
-          <div className="flex items-center space-x-2 mt-2 py-2">
-            <Checkbox id="inventory_only" checked={inventoryOnly} onCheckedChange={setInventoryOnly} />
-            <Label htmlFor="inventory_only" className="text-sm cursor-pointer font-normal text-slate-700 dark:text-slate-300">
-              Inventory Only (keep users & orders)
-            </Label>
-          </div>
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
-            This action is permanent and cannot be undone.
+            The next device sync will re-upload a full snapshot of the reset data. This action is permanent and cannot be undone.
           </p>
         </div>
-        <DialogFooter className="border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/40">
-          <Button variant="outline" className="border-slate-300 dark:border-slate-700" onClick={onCancel} disabled={loading}>
+        <DialogFooter className="flex flex-col sm:flex-row gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-800 dark:bg-slate-800/40">
+          <Button variant="outline" className="border-slate-300 dark:border-slate-700 w-full sm:w-auto sm:mr-auto" onClick={onCancel} disabled={loading}>
             Cancel
           </Button>
-          <Button variant="destructive" onClick={() => onConfirm(inventoryOnly)} disabled={loading}>
-            {loading ? "Resetting..." : "Reset Cloud Data"}
+          <Button variant="secondary" className="w-full sm:w-auto bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300 dark:bg-amber-900/50 dark:text-amber-300 dark:hover:bg-amber-800/60 dark:border-amber-800" onClick={() => onConfirm(true)} disabled={loading}>
+            {loading ? "Resetting..." : "Reset Inventory Only"}
+          </Button>
+          <Button variant="destructive" className="w-full sm:w-auto" onClick={() => onConfirm(false)} disabled={loading}>
+            {loading ? "Resetting..." : "Reset All Data"}
           </Button>
         </DialogFooter>
       </DialogContent>
