@@ -17,8 +17,28 @@ const numberFormat = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 3,
 });
 
-function Qty({ value, strong = false }) {
-  return <span className={strong ? "font-semibold text-foreground" : "text-foreground"}>{numberFormat.format(Number(value || 0))}</span>;
+function formatShotDisplay(value, shotsPerBottle) {
+  const total = Number(value || 0);
+  const perBottle = Number(shotsPerBottle || 0);
+  if (!Number.isFinite(perBottle) || perBottle <= 0) {
+    return numberFormat.format(total);
+  }
+  const safeTotal = Math.max(0, total);
+  let bottles = Math.floor(safeTotal / perBottle);
+  let shots = Math.round(safeTotal - bottles * perBottle);
+  if (shots >= perBottle) {
+    bottles += 1;
+    shots = 0;
+  }
+  const parts = [];
+  if (bottles > 0) parts.push(`${bottles} bt`);
+  if (shots > 0 || parts.length === 0) parts.push(`${shots} sh`);
+  return parts.join(" ");
+}
+
+function Qty({ value, strong = false, shotsPerBottle = 0 }) {
+  const display = formatShotDisplay(value, shotsPerBottle);
+  return <span className={strong ? "font-semibold text-foreground" : "text-foreground"}>{display}</span>;
 }
 
 function HistoryTable({ rows, type }) {
@@ -58,13 +78,13 @@ function HistoryTable({ rows, type }) {
                     <td className="px-4 py-3">{row.inventory_item_name}</td>
                   </>
                 )}
-                <td className="px-4 py-3 text-right"><Qty value={row.opening_quantity} /></td>
-                {isStore && <td className="px-4 py-3 text-right"><Qty value={row.purchased_quantity} /></td>}
-                {isStore && <td className="px-4 py-3 text-right"><Qty value={row.transferred_out_quantity} /></td>}
-                {!isStore && <td className="px-4 py-3 text-right"><Qty value={row.transferred_in_quantity} /></td>}
-                {!isStore && <td className="px-4 py-3 text-right"><Qty value={row.sold_quantity} /></td>}
-                {!isStore && <td className="px-4 py-3 text-right"><Qty value={row.void_quantity} /></td>}
-                <td className="px-4 py-3 text-right"><Qty value={row.closing_quantity} strong /></td>
+                <td className="px-4 py-3 text-right"><Qty value={row.opening_quantity} shotsPerBottle={row.shots_per_bottle} /></td>
+                {isStore && <td className="px-4 py-3 text-right"><Qty value={row.purchased_quantity} shotsPerBottle={row.shots_per_bottle} /></td>}
+                {isStore && <td className="px-4 py-3 text-right"><Qty value={row.transferred_out_quantity} shotsPerBottle={row.shots_per_bottle} /></td>}
+                {!isStore && <td className="px-4 py-3 text-right"><Qty value={row.transferred_in_quantity} shotsPerBottle={row.shots_per_bottle} /></td>}
+                {!isStore && <td className="px-4 py-3 text-right"><Qty value={row.sold_quantity} shotsPerBottle={row.shots_per_bottle} /></td>}
+                {!isStore && <td className="px-4 py-3 text-right"><Qty value={row.void_quantity} shotsPerBottle={row.shots_per_bottle} /></td>}
+                <td className="px-4 py-3 text-right"><Qty value={row.closing_quantity} shotsPerBottle={row.shots_per_bottle} strong /></td>
               </tr>
             ))
           )}
@@ -296,7 +316,7 @@ export default function StockManagement() {
                   <thead className="inventory-table-head">
                     <tr>
                       <th className="px-4 py-3 font-medium">Item</th>
-                      <th className="px-4 py-3 font-medium text-right">Bottle ml</th>
+                      <th className="px-4 py-3 font-medium text-right">Shots/Bottle</th>
                       <th className="px-4 py-3 font-medium text-right">Store</th>
                       {overview.stations.map((station) => (
                         <th key={station.id} className="px-4 py-3 font-medium text-right">
@@ -318,18 +338,18 @@ export default function StockManagement() {
                         <tr key={row.inventory_item_id} className="inventory-table-row">
                           <td className="px-4 py-3 font-medium">{row.inventory_item_name}</td>
                           <td className="px-4 py-3 text-right">
-                            <Qty value={row.container_size_ml} />
+                            <span className="text-foreground">{numberFormat.format(Number(row.shots_per_bottle || 0))}</span>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <Qty value={row.store_quantity} strong />
+                            <Qty value={row.store_quantity} shotsPerBottle={row.shots_per_bottle} strong />
                           </td>
                           {row.stations.map((station) => (
                             <td key={station.station_id} className="px-4 py-3 text-right">
-                              <Qty value={station.quantity} />
+                              <Qty value={station.quantity} shotsPerBottle={row.shots_per_bottle} />
                             </td>
                           ))}
                           <td className="px-4 py-3 text-right">
-                            <Qty value={row.total_quantity} strong />
+                            <Qty value={row.total_quantity} shotsPerBottle={row.shots_per_bottle} strong />
                           </td>
                         </tr>
                       ))
