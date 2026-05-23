@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from decimal import Decimal
 
@@ -19,6 +20,7 @@ from ..models import (
     PrintJob,
     Station,
     StationStock,
+    Store,
     StationStockSnapshot,
     StockPurchase,
     StockTransfer,
@@ -33,6 +35,8 @@ from ..models import (
 )
 
 sync_bp = Blueprint("sync", __name__)
+
+SYNC_RESET_ENTITY_TYPE = "sync_reset"
 
 SYNCED_ENTITY_TYPES = {
     "user",
@@ -106,6 +110,28 @@ def _reset_tenant_data(tenant_id: int, inventory_only: bool = False) -> None:
             SyncIdMap.query.filter_by(tenant_id=tenant_id).filter(
                 SyncIdMap.entity_type.in_(inventory_types)
             ).delete(synchronize_session=False)
+
+
+def _resolve_reset_store_id(tenant_id: int, store_id: int | None) -> int | None:
+    if store_id:
+        return store_id
+    store = Store.query.filter_by(tenant_id=tenant_id, is_active=True).order_by(Store.id.asc()).first()
+    return store.id if store else None
+
+
+def _emit_sync_reset_event(tenant_id: int, store_id: int, inventory_only: bool) -> None:
+    db.session.add(
+        SyncEvent(
+            tenant_id=tenant_id,
+            store_id=store_id,
+            device_id="cloud-reset",
+            event_id=f"sync-reset-{tenant_id}-{store_id}-{uuid.uuid4().hex}",
+            entity_type=SYNC_RESET_ENTITY_TYPE,
+            entity_id="inventory" if inventory_only else "all",
+            operation="reset",
+            payload={"inventory_only": bool(inventory_only)},
+        )
+    )
 
 
 def _parse_date(value):
@@ -761,7 +787,12 @@ def reset_sync_data():
         if device is None:
             return jsonify({"error": "device is not active"}), 403
 
+    reset_store_id = _resolve_reset_store_id(tenant_id, store_id)
+    if not reset_store_id:
+        return jsonify({"error": "store_id is required"}), 400
+
     _reset_tenant_data(tenant_id, inventory_only=inventory_only)
+    _emit_sync_reset_event(tenant_id, reset_store_id, inventory_only=inventory_only)
     db.session.commit()
     return jsonify({"status": "ok"})
 
