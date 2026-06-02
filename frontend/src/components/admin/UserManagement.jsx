@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 
 // Small reusable confirm dialog
 function ConfirmDialog({ open, title, description, onConfirm, onCancel, loading }) {
@@ -58,6 +59,7 @@ function ConfirmDialog({ open, title, description, onConfirm, onCancel, loading 
 }
 
 export default function UserManagement() {
+  const readOnly = useCloudReadOnly();
   const { user: currentUser, authToken } = useAuth();
 
   // data state
@@ -357,6 +359,7 @@ export default function UserManagement() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
+        {!readOnly && (
         <Card className="admin-card p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <TabsList className="grid w-full max-w-md grid-cols-2">
@@ -498,6 +501,7 @@ export default function UserManagement() {
             )}
           </div>
         </Card>
+        )}
 
         <TabsContent value="add-users" className="space-y-5">
           {/* Filters */}
@@ -570,24 +574,28 @@ export default function UserManagement() {
                             : "-"}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button size="sm" variant="outline" className="border-slate-300 dark:border-slate-700" onClick={() => openModal(u)}>
-                              Edit
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => confirmDelete(u.id)}
-                              disabled={currentUser?.role === "manager" && u.role === "admin"}
-                              title={
-                                currentUser?.role === "manager" && u.role === "admin"
-                                  ? "Managers cannot delete Admins"
-                                  : "Delete user"
-                              }
-                            >
-                              Delete
-                            </Button>
-                          </div>
+                          {!readOnly ? (
+                            <div className="flex items-center justify-end gap-2">
+                              <Button size="sm" variant="outline" className="border-slate-300 dark:border-slate-700" onClick={() => openModal(u)}>
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => confirmDelete(u.id)}
+                                disabled={currentUser?.role === "manager" && u.role === "admin"}
+                                title={
+                                  currentUser?.role === "manager" && u.role === "admin"
+                                    ? "Managers cannot delete Admins"
+                                    : "Delete user"
+                                }
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-500 dark:text-slate-400">View only</span>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -598,9 +606,11 @@ export default function UserManagement() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="create-profile">
-          <WaiterProfileManagement onProfilesChanged={loadProfiles} />
-        </TabsContent>
+        {!readOnly && (
+          <TabsContent value="create-profile">
+            <WaiterProfileManagement onProfilesChanged={loadProfiles} />
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Delete confirm dialog */}

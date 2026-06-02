@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/context/AuthContext";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 import {
   createInventoryLinks,
   deleteInventoryLink,
@@ -84,6 +85,7 @@ function defaultServingValue(servingType, inventoryItem) {
 
 export default function InventoryLinksTab() {
   const { token } = useAuth();
+  const readOnly = useCloudReadOnly();
   const [items, setItems] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [links, setLinks] = useState([]);
@@ -409,6 +411,7 @@ export default function InventoryLinksTab() {
             </div>
           </div>
 
+          {!readOnly && (
           <Dialog open={linkModalOpen} onOpenChange={setLinkModalOpen}>
             <DialogTrigger asChild>
               <Button className="font-semibold">+ New Serving Rule</Button>
@@ -504,9 +507,11 @@ export default function InventoryLinksTab() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          )}
         </div>
       </Card>
 
+      {!readOnly && (
       <Dialog open={editLinkModalOpen} onOpenChange={setEditLinkModalOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
@@ -599,6 +604,7 @@ export default function InventoryLinksTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
@@ -648,12 +654,18 @@ export default function InventoryLinksTab() {
                       {Number(group.shots_per_bottle || 0) > 0 ? `${Number(group.shots_per_bottle).toFixed(2)} shots` : "-"}
                     </td>
                     <td className="px-4 py-3 space-x-2">
-                      <Button variant="outline" size="sm" onClick={() => openEditModal(group)}>
-                        Edit
-                      </Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleLinkDelete(group)}>
-                        Delete
-                      </Button>
+                      {!readOnly ? (
+                        <>
+                          <Button variant="outline" size="sm" onClick={() => openEditModal(group)}>
+                            Edit
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => handleLinkDelete(group)}>
+                            Delete
+                          </Button>
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">View only</span>
+                      )}
                     </td>
                   </tr>
                 ))

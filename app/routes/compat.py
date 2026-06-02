@@ -78,6 +78,13 @@ def _business_day_bounds_utc(target_day, tenant_id: int):
     return start_eat.astimezone(timezone.utc), end_eat.astimezone(timezone.utc)
 
 
+def _report_range_bounds_utc(start_date, end_date, tenant_id: int):
+    """Inclusive business-day range in UTC for report filters (matches local POS)."""
+    start_dt, _ = _business_day_bounds_utc(start_date, tenant_id)
+    _, end_dt = _business_day_bounds_utc(end_date, tenant_id)
+    return start_dt, end_dt
+
+
 def _custom_branding_locked_for_request() -> bool:
     return current_app.config.get("DISABLE_TENANT_CUSTOM_BRANDING", False) and "super_admin" not in extract_roles_from_claims(get_jwt())
 
@@ -1222,8 +1229,7 @@ def order_history_summary_range():
     try:
         start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
         end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
-        start_dt = datetime.combine(start_date, datetime.min.time())
-        end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+        start_dt, end_dt = _report_range_bounds_utc(start_date, end_date, tenant_id)
     except ValueError:
         return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
 
@@ -1297,8 +1303,7 @@ def sales_summary():
         try:
             start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
             end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
-            start_dt = datetime.combine(start_date, datetime.min.time())
-            end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+            start_dt, end_dt = _report_range_bounds_utc(start_date, end_date, tenant_id)
             rows_query = rows_query.filter(OrderSummary.created_at >= start_dt, OrderSummary.created_at < end_dt)
         except ValueError:
             return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
@@ -1432,8 +1437,7 @@ def waiter_summary():
         try:
             start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
             end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
-            start_dt = datetime.combine(start_date, datetime.min.time())
-            end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+            start_dt, end_dt = _report_range_bounds_utc(start_date, end_date, tenant_id)
             rows_query = rows_query.filter(OrderSummary.created_at >= start_dt, OrderSummary.created_at < end_dt)
         except ValueError:
             return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
@@ -1468,8 +1472,7 @@ def waiter_details(waiter_id: str):
         try:
             start_date = datetime.strptime(start_date_str, "%Y-%m-%d").date()
             end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date()
-            start_dt = datetime.combine(start_date, datetime.min.time())
-            end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+            start_dt, end_dt = _report_range_bounds_utc(start_date, end_date, tenant_id)
             rows_query = rows_query.filter(OrderSummary.created_at >= start_dt, OrderSummary.created_at < end_dt)
         except ValueError:
             return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400

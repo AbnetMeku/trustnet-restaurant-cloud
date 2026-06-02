@@ -32,6 +32,7 @@ import OrderTracker from "@/components/admin/OrderTracker";
 import PrintJobs from "@/components/admin/PrintJobs";
 import ProfileSettings from "@/components/admin/ProfileSettings";
 import { useBranding } from "@/hooks/useBranding";
+import CloudReadOnlyBanner from "@/components/ui/CloudReadOnlyBanner";
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
@@ -286,9 +287,10 @@ export default function AdminDashboard() {
           </header>
 
           <main className="admin-main">
+            <CloudReadOnlyBanner />
             {active === "overview" && (
               <Card className="admin-card p-5 md:p-6 w-full" data-testid="admin-panel-overview">
-                <OverView />
+                <OverView businessDayStartTime={branding.business_day_start_time} />
               </Card>
             )}
 
@@ -324,13 +326,16 @@ export default function AdminDashboard() {
 
             {active === "reports" && (
               <Card className="admin-card p-5 md:p-6 w-full overflow-auto max-h-[82vh]" data-testid="admin-panel-reports">
-                <SalesSummaryReport darkMode={darkMode} />
+                <SalesSummaryReport
+                  darkMode={darkMode}
+                  businessDayStartTime={branding.business_day_start_time}
+                />
               </Card>
             )}
 
             {active === "waiter-summary" && (
               <Card className="admin-card p-5 md:p-6 w-full overflow-auto max-h-[82vh]" data-testid="admin-panel-waiter-summary">
-                <WaiterSummaryReport />
+                <WaiterSummaryReport businessDayStartTime={branding.business_day_start_time} />
               </Card>
             )}
 

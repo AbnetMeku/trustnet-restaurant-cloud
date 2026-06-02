@@ -8,10 +8,12 @@ import { Input } from "@/components/ui/input";
 import { getJobs, markJobPrinted, retryJob, deleteJob } from "@/api/print_jobs";
 import { formatEatDateTime } from "@/lib/timezone";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 
 const STATUS_OPTIONS = ["all", "pending", "printed", "failed"];
 
 export default function PrintJobs() {
+  const readOnly = useCloudReadOnly();
   const { authToken } = useAuth();
 
   const [jobs, setJobs] = useState([]);
@@ -265,23 +267,27 @@ export default function PrintJobs() {
                     <td className="px-4 py-3">{stationName}</td>
                     <td className="px-4 py-3">{formatEatDateTime(job.created_at)}</td>
                     <td className="px-4 py-3">
-                      <div className="flex gap-2 justify-end">
-                        {job.status === "failed" && (
-                          <Button size="sm" variant="outline" onClick={() => handleRetry(job.id)}>
-                            Retry
-                          </Button>
-                        )}
-                        {job.status === "pending" && (
-                          <Button size="sm" variant="secondary" onClick={() => handleMarkPrinted(job.id)}>
-                            Mark Printed
-                          </Button>
-                        )}
-                        {(job.status === "failed" || job.status === "pending") && (
-                          <Button size="sm" variant="destructive" onClick={() => handleDelete(job.id)}>
-                            Delete
-                          </Button>
-                        )}
-                      </div>
+                      {!readOnly ? (
+                        <div className="flex gap-2 justify-end">
+                          {job.status === "failed" && (
+                            <Button size="sm" variant="outline" onClick={() => handleRetry(job.id)}>
+                              Retry
+                            </Button>
+                          )}
+                          {job.status === "pending" && (
+                            <Button size="sm" variant="secondary" onClick={() => handleMarkPrinted(job.id)}>
+                              Mark Printed
+                            </Button>
+                          )}
+                          {(job.status === "failed" || job.status === "pending") && (
+                            <Button size="sm" variant="destructive" onClick={() => handleDelete(job.id)}>
+                              Delete
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-500 dark:text-slate-400">View only</span>
+                      )}
                     </td>
                   </tr>
                 );

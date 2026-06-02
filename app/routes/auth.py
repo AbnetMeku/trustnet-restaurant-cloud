@@ -82,12 +82,15 @@ def me():
         return jsonify({"error": "user not found"}), 404
 
     claims = get_jwt()
+    role = _normalize_role(claims.get("role") or user.role)
+    cloud_read_only = role in {"tenant_admin", "manager", "cashier", "admin"}
     return jsonify(
         {
             "id": user.id,
             "username": user.username,
             "role": claims.get("role"),
             "tenant_id": claims.get("tenant_id"),
+            "cloud_read_only": cloud_read_only,
             "stores": [{"id": store.id, "name": store.name, "code": store.code} for store in user.stores],
         }
     )

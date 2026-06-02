@@ -45,6 +45,7 @@ SYNCED_ENTITY_TYPES = {
     "waiter_profile",
     "category",
     "subcategory",
+    "branding",
     "menu_item",
     "inventory_item",
     "inventory_menu_link",
@@ -660,6 +661,8 @@ def _apply_sync_event(tenant_id: int, store_id: int, entity_type: str, payload: 
         _upsert_subcategory(tenant_id, payload)
     elif entity_type == "menu_item":
         _upsert_menu_item(tenant_id, payload)
+    elif entity_type == "branding":
+        _upsert_branding(tenant_id, payload)
     elif entity_type == "inventory_item":
         _upsert_inventory_item(tenant_id, payload)
     elif entity_type == "inventory_menu_link":
@@ -820,6 +823,8 @@ def push_sync_batch():
         return jsonify({"error": "device is not active"}), 403
 
     accepted = []
+    pending_items = []
+    event_ids = []
     for item in events:
         event_id = (item.get("event_id") or "").strip()
         entity_type = (item.get("entity_type") or "").strip()
@@ -837,8 +842,18 @@ def push_sync_batch():
         ):
             continue
 
-        existing = SyncEvent.query.filter_by(event_id=event_id).first()
-        if existing:
+        pending_items.append((event_id, entity_type, entity_id, operation, event_payload))
+        event_ids.append(event_id)
+
+    existing_ids = set()
+    if event_ids:
+        existing_ids = {
+            row.event_id
+            for row in SyncEvent.query.filter(SyncEvent.event_id.in_(event_ids)).all()
+        }
+
+    for event_id, entity_type, entity_id, operation, event_payload in pending_items:
+        if event_id in existing_ids:
             accepted.append(event_id)
             continue
 

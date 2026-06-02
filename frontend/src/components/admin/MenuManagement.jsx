@@ -24,6 +24,7 @@ import {
 } from "@/api/menu_item";
 import { getStations } from "@/api/stations";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 
 const fieldClass =
   "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-slate-600";
@@ -51,6 +52,7 @@ function ConfirmDialog({ open, message, onConfirm, onCancel }) {
 }
 
 export default function MenuManagement() {
+  const readOnly = useCloudReadOnly();
   const [tab, setTab] = useState("categories");
 
   // Categories / Subcategories
@@ -354,6 +356,7 @@ export default function MenuManagement() {
   );
 
   const openAddModal = () => {
+    if (readOnly) return;
     setCurrentItem(null);
     if (tab === "categories")
       setCategoryForm({ id: null, name: "", quantity_step: "1" });
@@ -425,9 +428,11 @@ export default function MenuManagement() {
             </Button>
           ))}
         </div>
-        <Button onClick={openAddModal}>
-          <FaPlus className="mr-2" /> Add {tab === "categories" ? "Category" : tab === "subcategories" ? "Subcategory" : "Menu Item"}
-        </Button>
+        {!readOnly && (
+          <Button onClick={openAddModal}>
+            <FaPlus className="mr-2" /> Add {tab === "categories" ? "Category" : tab === "subcategories" ? "Subcategory" : "Menu Item"}
+          </Button>
+        )}
         </div>
       </Card>
 
@@ -544,26 +549,28 @@ export default function MenuManagement() {
                 <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:border-blue-800 dark:bg-[#0b1b3e] dark:text-blue-200">
                   Step {Number(cat.quantity_step || 1) === 0.5 ? "0.5" : "1"}
                 </span>
-                <div className="flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 w-8 border-slate-300 p-0 dark:border-blue-800"
-                    onClick={() => handleEdit(cat, setCategoryForm, "category")}
-                  >
-                    <FaEdit />
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    onClick={() =>
-                      confirmDelete(cat.id, deleteCategory, cat.name, "Category")
-                    }
-                  >
-                    <FaTrash />
-                  </Button>
-                </div>
+                {!readOnly && (
+                  <div className="flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 border-slate-300 p-0 dark:border-blue-800"
+                      onClick={() => handleEdit(cat, setCategoryForm, "category")}
+                    >
+                      <FaEdit />
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      onClick={() =>
+                        confirmDelete(cat.id, deleteCategory, cat.name, "Category")
+                      }
+                    >
+                      <FaTrash />
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -604,33 +611,35 @@ export default function MenuManagement() {
                   </p>
                 </CardHeader>
                 <CardContent className="flex justify-end pb-4">
-                  <div className="flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 w-8 border-slate-300 p-0 dark:border-blue-800"
-                      onClick={() =>
-                        handleEdit(sc, setSubcategoryForm, "subcategory")
-                      }
-                    >
-                      <FaEdit />
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={() =>
-                        confirmDelete(
-                          sc.id,
-                          deleteSubcategory,
-                          sc.name,
-                          "Subcategory"
-                        )
-                      }
-                    >
-                      <FaTrash />
-                    </Button>
-                  </div>
+                  {!readOnly && (
+                    <div className="flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 border-slate-300 p-0 dark:border-blue-800"
+                        onClick={() =>
+                          handleEdit(sc, setSubcategoryForm, "subcategory")
+                        }
+                      >
+                        <FaEdit />
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() =>
+                          confirmDelete(
+                            sc.id,
+                            deleteSubcategory,
+                            sc.name,
+                            "Subcategory"
+                          )
+                        }
+                      >
+                        <FaTrash />
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -700,23 +709,24 @@ export default function MenuManagement() {
                   {item.name}
                 </CardTitle>
 
-                {/* Hover actions */}
-                <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEdit(item, setMenuForm, "menu")}
-                  >
-                    <FaEdit />
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => confirmDelete(item.id, deleteMenuItem, item.name, "Menu item")}
-                  >
-                    <FaTrash />
-                  </Button>
-                </div>
+                {!readOnly && (
+                  <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEdit(item, setMenuForm, "menu")}
+                    >
+                      <FaEdit />
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => confirmDelete(item.id, deleteMenuItem, item.name, "Menu item")}
+                    >
+                      <FaTrash />
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -724,7 +734,7 @@ export default function MenuManagement() {
       )}
 
       {/* Modal */}
-      {modalOpen &&
+      {modalOpen && !readOnly &&
         createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-2 backdrop-blur-sm">
           <div className="w-full max-w-lg overflow-y-auto rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 max-h-[calc(100vh-2rem)]">

@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { eatBusinessDateISO } from "@/lib/timezone";
 import { getApiErrorMessage } from "@/lib/apiError";
 
-export default function OverView() {
+export default function OverView({ businessDayStartTime = "06:00" }) {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -21,17 +21,17 @@ export default function OverView() {
   function getDateRange(filter) {
     const today = new Date();
     let startDate;
-    const endDate = eatBusinessDateISO(today);
+    const endDate = eatBusinessDateISO(today, businessDayStartTime);
 
     if (filter === "today") startDate = endDate;
     else if (filter === "last7") {
       const d = new Date();
       d.setDate(today.getDate() - 6);
-      startDate = eatBusinessDateISO(d);
+      startDate = eatBusinessDateISO(d, businessDayStartTime);
     } else {
       const d = new Date();
       d.setDate(today.getDate() - 29);
-      startDate = eatBusinessDateISO(d);
+      startDate = eatBusinessDateISO(d, businessDayStartTime);
     }
     return { startDate, endDate };
   }
@@ -113,7 +113,7 @@ export default function OverView() {
     }
 
     loadData();
-  }, [token, dateFilter]);
+  }, [token, dateFilter, businessDayStartTime]);
 
   if (loading) return <p className="p-4 text-sm text-slate-500 dark:text-slate-300">Loading dashboard...</p>;
   if (error) return <p className="p-4 text-sm text-red-600 dark:text-red-400">{error}</p>;

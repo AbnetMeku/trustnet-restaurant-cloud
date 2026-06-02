@@ -23,10 +23,12 @@ export default function Login() {
       const payload = { username, password };
       const res = await axios.post("/api/auth/login", payload);
       const { user: nextUser, access_token } = res.data;
+      const cloudRole = nextUser.role;
       const userData = {
         ...nextUser,
-        role: nextUser.role === "super_admin" ? "super_admin" : normalizeTenantRole(nextUser.role),
-        cloud_role: nextUser.role,
+        role: cloudRole === "super_admin" ? "super_admin" : normalizeTenantRole(cloudRole),
+        cloud_role: cloudRole,
+        cloud_read_only: ["tenant_admin", "manager", "cashier"].includes(cloudRole),
       };
 
       login(userData, access_token);

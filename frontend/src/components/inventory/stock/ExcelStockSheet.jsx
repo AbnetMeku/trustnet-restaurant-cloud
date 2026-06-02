@@ -13,6 +13,8 @@ import { Card } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
+import { useBranding } from "@/hooks/useBranding";
 
 function num(v) {
   const n = Number(v);
@@ -22,10 +24,17 @@ function num(v) {
 export default function ExcelStockSheet() {
   const { authToken, user } = useAuth();
   const token = authToken || localStorage.getItem("auth_token");
-  const canEdit = ["admin", "manager"].includes(user?.role);
+  const readOnly = useCloudReadOnly();
+  const branding = useBranding();
+  const businessDayStart = branding.business_day_start_time || "06:00";
+  const canEdit = !readOnly && ["admin", "manager"].includes(user?.role);
 
   const [mode, setMode] = useState("station");
-  const [date, setDate] = useState(eatBusinessDateISO());
+  const [date, setDate] = useState(eatBusinessDateISO(new Date(), businessDayStart));
+
+  useEffect(() => {
+    setDate(eatBusinessDateISO(new Date(), businessDayStart));
+  }, [businessDayStart]);
   const [stations, setStations] = useState([]);
   const [selectedStation, setSelectedStation] = useState("");
   const [itemsMap, setItemsMap] = useState(new Map());

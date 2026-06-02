@@ -10,8 +10,10 @@ import toast from "react-hot-toast";
 import { eatBusinessDateISO, formatEatTime } from "@/lib/timezone";
 import { getApiErrorMessage } from "@/lib/apiError";
 import ModalPortal from "@/components/ui/ModalPortal";
+import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 
 export default function AdminOrders({ businessDayStartTime }) {
+  const readOnly = useCloudReadOnly();
   const { authToken } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -440,9 +442,11 @@ export default function AdminOrders({ businessDayStartTime }) {
                 >
                   Details
                 </Button>
-                <Button className="flex-1" variant="destructive" onClick={() => setOrderToDelete(order)}>
-                  Delete
-                </Button>
+                {!readOnly && (
+                  <Button className="flex-1" variant="destructive" onClick={() => setOrderToDelete(order)}>
+                    Delete
+                  </Button>
+                )}
               </div>
             </Card>
           ))}
@@ -583,16 +587,18 @@ export default function AdminOrders({ businessDayStartTime }) {
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Total: ${Number(selectedOrder.total_amount || 0).toFixed(2)}
               </p>
-              <div className="flex gap-2">
-                {editMode ? (
-                  <>
-                    <Button variant="outline" onClick={() => setEditMode(false)}>Cancel Edit</Button>
-                    <Button onClick={handleSaveChanges}>Save Changes</Button>
-                  </>
-                ) : (
-                  <Button onClick={() => setEditMode(true)}>Edit Items</Button>
-                )}
-              </div>
+              {!readOnly && (
+                <div className="flex gap-2">
+                  {editMode ? (
+                    <>
+                      <Button variant="outline" onClick={() => setEditMode(false)}>Cancel Edit</Button>
+                      <Button onClick={handleSaveChanges}>Save Changes</Button>
+                    </>
+                  ) : (
+                    <Button onClick={() => setEditMode(true)}>Edit Items</Button>
+                  )}
+                </div>
+              )}
             </div>
             </div>
           </div>

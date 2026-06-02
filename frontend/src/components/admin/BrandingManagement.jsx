@@ -36,6 +36,7 @@ import {
 import { getSubcategories } from "@/api/subcategories";
 import { clearOrderHistoryRange } from "@/api/order_history";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 
 const DEFAULT_FORM = {
   logo_url: "",
@@ -49,6 +50,7 @@ const DEFAULT_FORM = {
 
 export default function BrandingManagement() {
   const { user, authToken } = useAuth();
+  const readOnly = useCloudReadOnly();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingHistory, setDeletingHistory] = useState(false);
@@ -352,6 +354,7 @@ export default function BrandingManagement() {
                 </TabsTrigger>
               </TabsList>
             </Tabs>
+              {!readOnly && (
               <Button
                 variant="outline"
                 onClick={handleResetDefaults}
@@ -360,6 +363,7 @@ export default function BrandingManagement() {
               >
                 Reset to Default
               </Button>
+              )}
             </div>
           </div>
         </div>
@@ -382,6 +386,7 @@ export default function BrandingManagement() {
                   id="branding-logo-upload"
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
+                  disabled={readOnly}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     handleUpload("logo", file);
@@ -398,6 +403,7 @@ export default function BrandingManagement() {
                   id="branding-background-upload"
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
+                  disabled={readOnly}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     handleUpload("background", file);
@@ -408,11 +414,18 @@ export default function BrandingManagement() {
                 {uploadingBackground && <p className="text-xs text-blue-600 dark:text-blue-400">Uploading background...</p>}
               </div>
 
+              {!readOnly && (
               <div className="pt-1">
                 <Button onClick={handleSave} disabled={saving || uploadingLogo || uploadingBackground}>
                   {saving ? "Saving..." : "Save Settings"}
                 </Button>
               </div>
+              )}
+              {readOnly && (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Branding changes are made on the local POS. This view is read-only.
+                </p>
+              )}
             </Card>
 
             <Card className="admin-card p-4 space-y-3 backdrop-blur-sm">
@@ -450,7 +463,7 @@ export default function BrandingManagement() {
 
         <TabsContent value="operations" className="mt-0" data-testid="settings-content-operations">
           <div className="space-y-4">
-            {user?.role === "admin" && (
+            {user?.role === "admin" && !readOnly && (
               <Card className="admin-card space-y-4 border border-red-200/80 p-4 backdrop-blur-sm dark:border-red-900/70">
                 <div className="space-y-1">
                   <h4 className="font-medium text-red-700 dark:text-red-400">Clear Order History</h4>
@@ -644,11 +657,13 @@ export default function BrandingManagement() {
                 </div>
               </div>
 
+              {!readOnly && (
               <div className="pt-1">
                 <Button onClick={handleSave} disabled={saving || uploadingLogo || uploadingBackground}>
                   {saving ? "Saving..." : "Save Settings"}
                 </Button>
               </div>
+              )}
             </Card>
           </div>
         </TabsContent>

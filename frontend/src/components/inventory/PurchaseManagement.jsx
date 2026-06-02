@@ -13,6 +13,7 @@ import { getInventoryItems } from "@/api/inventory/items";
 import { getAllStoreStock } from "@/api/inventory/stock";
 import { formatEatDateTime } from "@/lib/timezone";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 
 const PAGE_SIZE = 10;
 
@@ -53,6 +54,7 @@ function StatusBadge({ status }) {
 }
 
 export default function PurchaseManagement() {
+  const readOnly = useCloudReadOnly();
   const { token, user } = useAuth();
   const [activeTab, setActiveTab] = useState("entry");
   const [items, setItems] = useState([]);
@@ -218,10 +220,15 @@ export default function PurchaseManagement() {
           <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
             <Card className="inventory-panel p-5">
               <div className="mb-4">
-                <h3 className="text-lg font-semibold">{editId ? "Update Receipt" : "Receive Stock"}</h3>
-                <p className="text-sm text-muted-foreground">Search the bottle, enter quantity, and confirm the stock increase.</p>
+                <h3 className="text-lg font-semibold">{readOnly ? "Receive Stock (view only)" : editId ? "Update Receipt" : "Receive Stock"}</h3>
+                <p className="text-sm text-muted-foreground">
+                  {readOnly
+                    ? "Record purchases on the local POS. This view shows synced receipt history."
+                    : "Search the bottle, enter quantity, and confirm the stock increase."}
+                </p>
               </div>
 
+              {!readOnly && (
               <div className="space-y-4">
                 <div>
                   <label className="mb-2 block text-sm font-medium">Inventory Item</label>
@@ -288,6 +295,7 @@ export default function PurchaseManagement() {
                   )}
                 </div>
               </div>
+              )}
             </Card>
 
             <Card className="inventory-panel p-5">
@@ -367,27 +375,31 @@ export default function PurchaseManagement() {
                         <td className="px-4 py-3">{formatEatDateTime(purchase.created_at)}</td>
                         {user?.role === "admin" && (
                           <td className="px-4 py-3 text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={purchase.status === "Deleted"}
-                                onClick={() => openEdit(purchase)}
-                              >
-                                Edit
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                disabled={purchase.status === "Deleted"}
-                                onClick={() => {
-                                  setDeleteTarget(purchase);
-                                  setShowDeleteDialog(true);
-                                }}
-                              >
-                                Delete
-                              </Button>
-                            </div>
+                            {!readOnly ? (
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={purchase.status === "Deleted"}
+                                  onClick={() => openEdit(purchase)}
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  disabled={purchase.status === "Deleted"}
+                                  onClick={() => {
+                                    setDeleteTarget(purchase);
+                                    setShowDeleteDialog(true);
+                                  }}
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-500">—</span>
+                            )}
                           </td>
                         )}
                       </tr>

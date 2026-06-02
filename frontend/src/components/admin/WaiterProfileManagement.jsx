@@ -22,6 +22,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 
 const defaultForm = {
   name: "",
@@ -32,6 +33,7 @@ const defaultForm = {
 
 export default function WaiterProfileManagement({ onProfilesChanged = null }) {
   const { authToken } = useAuth();
+  const readOnly = useCloudReadOnly();
   const [profiles, setProfiles] = useState([]);
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -173,6 +175,7 @@ export default function WaiterProfileManagement({ onProfilesChanged = null }) {
 
   return (
     <div className="space-y-5">
+      {!readOnly && (
       <Card className="border-slate-200 p-4 dark:border-slate-800">
         <div className="flex items-center justify-end">
           <Dialog open={open} onOpenChange={(value) => (!value ? closeModal() : setOpen(value))}>
@@ -254,6 +257,7 @@ export default function WaiterProfileManagement({ onProfilesChanged = null }) {
           </Dialog>
         </div>
       </Card>
+      )}
 
       <Card className="overflow-hidden border-slate-200 dark:border-slate-800">
         <div className="overflow-x-auto">
@@ -301,14 +305,18 @@ export default function WaiterProfileManagement({ onProfilesChanged = null }) {
                     </td>
                     <td className="px-4 py-3">{profile.waiter_count ?? 0}</td>
                     <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => openEdit(profile)}>
-                          Edit
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => remove(profile.id)}>
-                          Delete
-                        </Button>
-                      </div>
+                      {!readOnly ? (
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="outline" onClick={() => openEdit(profile)}>
+                            Edit
+                          </Button>
+                          <Button size="sm" variant="destructive" onClick={() => remove(profile.id)}>
+                            Delete
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-500">View only</span>
+                      )}
                     </td>
                   </tr>
                 ))

@@ -9,6 +9,7 @@ import { FaEdit, FaPlus, FaTimes, FaTrash } from "react-icons/fa";
 import { toast } from "react-hot-toast";
 import { getApiErrorMessage } from "@/lib/apiError";
 import ModalPortal from "@/components/ui/ModalPortal";
+import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 
 const inputClass =
   "h-10 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900 shadow-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100";
@@ -23,6 +24,7 @@ function sortByTableNumber(a, b) {
 }
 
 export default function TableManagement() {
+  const readOnly = useCloudReadOnly();
   const [tables, setTables] = useState([]);
   const [waiters, setWaiters] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -67,6 +69,7 @@ export default function TableManagement() {
   }, []);
 
   const openModal = (table = null) => {
+    if (readOnly) return;
     if (table) {
       setCurrentTable(table);
       setCreateMode("auto");
@@ -247,9 +250,11 @@ export default function TableManagement() {
           >
             Clear
           </Button>
-          <Button className="h-10" onClick={() => openModal()}>
-            <FaPlus className="mr-2" /> Add Table
-          </Button>
+          {!readOnly && (
+            <Button className="h-10" onClick={() => openModal()}>
+              <FaPlus className="mr-2" /> Add Table
+            </Button>
+          )}
         </div>
       </Card>
 
@@ -358,35 +363,37 @@ export default function TableManagement() {
                       )}
                     </div>
 
-                    <div className="mt-3 flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="border-slate-300 dark:border-slate-700"
-                        onClick={() => openModal(table)}
-                      >
-                        <FaEdit className="mr-1" /> Edit
-                      </Button>
-                      {deleteConfirmId === table.id ? (
-                        <>
-                          <Button size="sm" variant="destructive" onClick={() => handleDelete(table.id)}>
-                            Confirm
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-slate-300 dark:border-slate-700"
-                            onClick={() => setDeleteConfirmId(null)}
-                          >
-                            Cancel
-                          </Button>
-                        </>
-                      ) : (
-                        <Button variant="destructive" size="sm" onClick={() => setDeleteConfirmId(table.id)}>
-                          <FaTrash className="mr-1" /> Delete
+                    {!readOnly && (
+                      <div className="mt-3 flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-slate-300 dark:border-slate-700"
+                          onClick={() => openModal(table)}
+                        >
+                          <FaEdit className="mr-1" /> Edit
                         </Button>
-                      )}
-                    </div>
+                        {deleteConfirmId === table.id ? (
+                          <>
+                            <Button size="sm" variant="destructive" onClick={() => handleDelete(table.id)}>
+                              Confirm
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-slate-300 dark:border-slate-700"
+                              onClick={() => setDeleteConfirmId(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </>
+                        ) : (
+                          <Button variant="destructive" size="sm" onClick={() => setDeleteConfirmId(table.id)}>
+                            <FaTrash className="mr-1" /> Delete
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </Card>
                 ))}
               </div>

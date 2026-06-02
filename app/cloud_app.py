@@ -14,6 +14,7 @@ from .routes.licenses import licenses_bp
 from .routes.policy import policy_bp
 from .routes.sync import sync_bp
 from .routes.tenants import tenants_bp
+from .reporting_guard import register_reporting_readonly_guards
 
 
 def create_app() -> Flask:
@@ -23,6 +24,8 @@ def create_app() -> Flask:
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
+
+    register_reporting_readonly_guards(compat_bp, admin_bp)
 
     app.register_blueprint(health_bp, url_prefix="/api")
     app.register_blueprint(tenants_bp, url_prefix="/api")

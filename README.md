@@ -9,7 +9,15 @@ This service is separate from the local restaurant runtime. It is intended to pr
 - multi-tenant admin APIs
 - store and device registration
 - license activation and validation
-- sync event ingestion and pull cursors
+- sync event ingestion (local branches push; cloud UI is reporting read-only for tenant roles)
+
+### Tenant reporting (read-only)
+
+Tenant admins, managers, and cashiers can sign in and browse the full cloud UI (users, tables, menu, inventory, orders, print jobs, reports). Operational **writes** on compat/admin routes return `403`; only **password change** (`PUT /api/auth/update-password`) remains writable for tenant JWTs. Super admin keeps control-plane writes (tenants, licenses, policy, tenant-admin account). Local POS devices may still `POST /api/sync/push`, activate devices, and validate licenses.
+
+### Rollout order
+
+Deploy **cloud backend + frontend first**, then update **local** agents with `CLOUD_SYNC_PULL_ENABLED=false` (default). That avoids a window where the cloud UI is read-only but branches still pull stale cloud sync events.
 
 ## Initial API Surface
 

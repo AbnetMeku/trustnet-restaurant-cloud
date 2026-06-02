@@ -7,11 +7,13 @@ import { getStations, createStation, updateStation, deleteStation } from "@/api/
 import { FaPlus, FaTrash, FaEdit } from "react-icons/fa";
 import { toast } from "react-hot-toast";
 import ModalPortal from "@/components/ui/ModalPortal";
+import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 
 const inputClass =
   "h-10 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900 shadow-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100";
 
 export default function StationManagement() {
+  const readOnly = useCloudReadOnly();
   const [stations, setStations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -209,11 +211,13 @@ export default function StationManagement() {
             </div>
           </div>
         </div>
-        <div className="admin-toolbar p-4 md:p-6">
-          <Button onClick={() => setModalOpen(true)} className="h-10">
-            <FaPlus className="mr-2" /> Add Station
-          </Button>
-        </div>
+        {!readOnly && (
+          <div className="admin-toolbar p-4 md:p-6">
+            <Button onClick={() => setModalOpen(true)} className="h-10">
+              <FaPlus className="mr-2" /> Add Station
+            </Button>
+          </div>
+        )}
       </Card>
 
       {loading ? (
@@ -274,25 +278,29 @@ export default function StationManagement() {
                     </td>
                     <td className="px-4 py-3">****</td>
                     <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <Button onClick={() => handleEdit(station)} variant="outline" size="sm" className="border-slate-300 dark:border-slate-700">
-                          <FaEdit className="mr-1" /> Edit
-                        </Button>
-                        {deleteConfirm === station.id ? (
-                          <>
-                            <Button onClick={() => handleDelete(station.id)} variant="destructive" size="sm">
-                              Confirm
-                            </Button>
-                            <Button onClick={() => setDeleteConfirm(null)} size="sm" variant="outline" className="border-slate-300 dark:border-slate-700">
-                              Cancel
-                            </Button>
-                          </>
-                        ) : (
-                          <Button onClick={() => setDeleteConfirm(station.id)} variant="destructive" size="sm">
-                            <FaTrash className="mr-1" /> Delete
+                      {!readOnly ? (
+                        <div className="flex justify-end gap-2">
+                          <Button onClick={() => handleEdit(station)} variant="outline" size="sm" className="border-slate-300 dark:border-slate-700">
+                            <FaEdit className="mr-1" /> Edit
                           </Button>
-                        )}
-                      </div>
+                          {deleteConfirm === station.id ? (
+                            <>
+                              <Button onClick={() => handleDelete(station.id)} variant="destructive" size="sm">
+                                Confirm
+                              </Button>
+                              <Button onClick={() => setDeleteConfirm(null)} size="sm" variant="outline" className="border-slate-300 dark:border-slate-700">
+                                Cancel
+                              </Button>
+                            </>
+                          ) : (
+                            <Button onClick={() => setDeleteConfirm(station.id)} variant="destructive" size="sm">
+                              <FaTrash className="mr-1" /> Delete
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-500 dark:text-slate-400">View only</span>
+                      )}
                     </td>
                   </tr>
                 ))}

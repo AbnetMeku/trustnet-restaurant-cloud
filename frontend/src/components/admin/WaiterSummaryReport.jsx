@@ -8,8 +8,8 @@ import { eatBusinessDateISO, msUntilNextBusinessStart } from "@/lib/timezone";
 import { getApiErrorMessage } from "@/lib/apiError";
 import ModalPortal from "@/components/ui/ModalPortal";
 
-export default function WaiterSummaryReport() {
-  const today = eatBusinessDateISO();
+export default function WaiterSummaryReport({ businessDayStartTime = "06:00" }) {
+  const today = eatBusinessDateISO(new Date(), businessDayStartTime);
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
   const [report, setReport] = useState([]);
@@ -21,6 +21,12 @@ export default function WaiterSummaryReport() {
   const [modalItems, setModalItems] = useState([]);
   const [modalLoading, setModalLoading] = useState(false);
   const isReportToday = endDate === today;
+
+  useEffect(() => {
+    const nextToday = eatBusinessDateISO(new Date(), businessDayStartTime);
+    setStartDate(nextToday);
+    setEndDate(nextToday);
+  }, [businessDayStartTime]);
 
   const fetchReport = async () => {
     if (!startDate || !endDate) return;

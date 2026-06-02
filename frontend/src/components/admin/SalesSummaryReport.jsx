@@ -61,18 +61,24 @@ async function applyEthiopicFontIfAvailable(pdf) {
   }
 }
 
-export default function SalesSummaryReport({ darkMode }) {
+export default function SalesSummaryReport({ darkMode, businessDayStartTime = "06:00" }) {
   const [data, setData] = useState(null);
   const [waiters, setWaiters] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const today = eatBusinessDateISO();
+  const today = eatBusinessDateISO(new Date(), businessDayStartTime);
   const [waiterId, setWaiterId] = useState("");
   const [vipOnly, setVipOnly] = useState("all");
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
+
+  useEffect(() => {
+    const nextToday = eatBusinessDateISO(new Date(), businessDayStartTime);
+    setStartDate(nextToday);
+    setEndDate(nextToday);
+  }, [businessDayStartTime]);
 
   useEffect(() => {
     async function fetchWaiters() {

@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 
 const presetOptions = [
   { id: "shot", label: "Shot", serving_type: "shot", serving_value: 1 },
@@ -103,6 +104,7 @@ function formatLinkRule(link, item) {
 }
 
 export default function InventoryItemsTab() {
+  const readOnly = useCloudReadOnly();
   const { token } = useAuth();
   const [items, setItems] = useState([]);
   const [loadingItems, setLoadingItems] = useState(true);
@@ -411,6 +413,7 @@ export default function InventoryItemsTab() {
 
   return (
     <div className="space-y-4">
+      {!readOnly && (
       <div className="flex justify-end">
         <Dialog open={itemModalOpen} onOpenChange={(open) => (open ? openItemModal() : closeItemModal())}>
           <DialogTrigger asChild>
@@ -526,6 +529,7 @@ export default function InventoryItemsTab() {
           </DialogContent>
         </Dialog>
       </div>
+      )}
 
       <Card className="inventory-panel overflow-hidden">
         <div className="inventory-table-shell rounded-none border-0 bg-transparent dark:bg-transparent">
@@ -566,17 +570,21 @@ export default function InventoryItemsTab() {
                         {shotsPerBottle ? shotsPerBottle.toFixed(2) : "-"}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="outline" onClick={() => openLinkModal(item)}>
-                            Menu Links
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => openItemModal(item)}>
-                            Edit
-                          </Button>
-                          <Button size="sm" variant="destructive" onClick={() => setDeleteId(item.id)}>
-                            Delete
-                          </Button>
-                        </div>
+                        {!readOnly ? (
+                          <div className="flex justify-end gap-2">
+                            <Button size="sm" variant="outline" onClick={() => openLinkModal(item)}>
+                              Menu Links
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => openItemModal(item)}>
+                              Edit
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => setDeleteId(item.id)}>
+                              Delete
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-500">View only</span>
+                        )}
                       </td>
                     </tr>
                   );

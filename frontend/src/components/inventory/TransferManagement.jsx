@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
 import { formatEatDateTime } from "@/lib/timezone";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 import { getTransfers, createTransfer, updateTransfer, deleteTransfer } from "@/api/inventory/transfer";
 import { getStations } from "@/api/stations";
 import { getInventoryItems } from "@/api/inventory/items";
@@ -55,6 +56,7 @@ function StatusBadge({ status }) {
 
 export default function TransferManagement() {
   const { token, user } = useAuth();
+  const readOnly = useCloudReadOnly();
   const [activeTab, setActiveTab] = useState("entry");
   const [items, setItems] = useState([]);
   const [stocks, setStocks] = useState([]);
@@ -268,10 +270,15 @@ export default function TransferManagement() {
           <div className="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
             <Card className="inventory-panel p-5">
               <div className="mb-4">
-                <h3 className="text-lg font-semibold">{editId ? "Update Transfer" : "Transfer To Station"}</h3>
-                <p className="text-sm text-muted-foreground">Move bottles from store stock to a destination station with a clear before/after preview.</p>
+                <h3 className="text-lg font-semibold">{readOnly ? "Transfer To Station (view only)" : editId ? "Update Transfer" : "Transfer To Station"}</h3>
+                <p className="text-sm text-muted-foreground">
+                  {readOnly
+                    ? "Record transfers on the local POS. This view shows synced transfer history."
+                    : "Move bottles from store stock to a destination station with a clear before/after preview."}
+                </p>
               </div>
 
+              {!readOnly && (
               <div className="space-y-4">
                 <div>
                   <label className="mb-2 block text-sm font-medium">Inventory Item</label>
@@ -347,6 +354,7 @@ export default function TransferManagement() {
                   )}
                 </div>
               </div>
+              )}
             </Card>
 
             <Card className="inventory-panel p-5">
@@ -426,27 +434,31 @@ export default function TransferManagement() {
                         <td className="px-4 py-3">{formatEatDateTime(transfer.created_at)}</td>
                         {user?.role === "admin" && (
                           <td className="px-4 py-3 text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={transfer.status === "Deleted"}
-                                onClick={() => openEdit(transfer)}
-                              >
-                                Edit
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                disabled={transfer.status === "Deleted"}
-                                onClick={() => {
-                                  setDeleteTarget(transfer);
-                                  setShowDeleteDialog(true);
-                                }}
-                              >
-                                Delete
-                              </Button>
-                            </div>
+                            {!readOnly ? (
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={transfer.status === "Deleted"}
+                                  onClick={() => openEdit(transfer)}
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  disabled={transfer.status === "Deleted"}
+                                  onClick={() => {
+                                    setDeleteTarget(transfer);
+                                    setShowDeleteDialog(true);
+                                  }}
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-500">—</span>
+                            )}
                           </td>
                         )}
                       </tr>

@@ -8,9 +8,12 @@ import { Loader2 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { eatBusinessDateISO } from "@/lib/timezone";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { useBranding } from "@/hooks/useBranding";
 
 export default function StationStockHistory() {
   const { token } = useAuth();
+  const branding = useBranding();
+  const businessDayStart = branding.business_day_start_time || "06:00";
   const [loading, setLoading] = useState(false);
   const [snapshots, setSnapshots] = useState([]);
   const [stations, setStations] = useState([]);
@@ -20,8 +23,12 @@ export default function StationStockHistory() {
 
   const [selectedStation, setSelectedStation] = useState("");
   const [selectedDate, setSelectedDate] = useState(
-    eatBusinessDateISO() // 🎯 default = business day
+    eatBusinessDateISO(new Date(), businessDayStart)
   );
+
+  useEffect(() => {
+    setSelectedDate(eatBusinessDateISO(new Date(), businessDayStart));
+  }, [businessDayStart]);
 
   // Load stations and default to the first allowed one
   useEffect(() => {
@@ -76,7 +83,7 @@ export default function StationStockHistory() {
 
   const handleReset = () => {
     if (stations.length > 0) setSelectedStation(stations[0].id);
-    setSelectedDate(eatBusinessDateISO()); // reset to business day
+    setSelectedDate(eatBusinessDateISO(new Date(), businessDayStart));
   };
 
   return (

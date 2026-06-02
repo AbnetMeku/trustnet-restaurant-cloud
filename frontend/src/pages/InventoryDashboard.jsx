@@ -22,6 +22,7 @@ import PurchaseManagement from "@/components/inventory/PurchaseManagement";
 import TransferManagement from "@/components/inventory/TransferManagement";
 import StoreStationView from "@/components/inventory/ViewStock";
 import InventoryItemManagement from "@/components/inventory/InventoryItemManagement";
+import CloudReadOnlyBanner from "@/components/ui/CloudReadOnlyBanner";
 
 const inventoryMenu = [
   { id: "inventory-register", label: "Register", icon: FaPlusCircle },
@@ -181,6 +182,7 @@ export default function InventoryDashboard() {
           </header>
 
           <main className="admin-main">
+            <CloudReadOnlyBanner />
             {active === "inventory-register" && (
               <Card className="admin-card p-5 md:p-6 w-full">
                 <h2 className="admin-page-title mb-4">Register</h2>
