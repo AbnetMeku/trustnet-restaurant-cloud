@@ -32,7 +32,6 @@ import OrderTracker from "@/components/admin/OrderTracker";
 import PrintJobs from "@/components/admin/PrintJobs";
 import ProfileSettings from "@/components/admin/ProfileSettings";
 import { useBranding } from "@/hooks/useBranding";
-import CloudReadOnlyBanner from "@/components/ui/CloudReadOnlyBanner";
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
@@ -287,7 +286,6 @@ export default function AdminDashboard() {
           </header>
 
           <main className="admin-main">
-            <CloudReadOnlyBanner />
             {active === "overview" && (
               <Card className="admin-card p-5 md:p-6 w-full" data-testid="admin-panel-overview">
                 <OverView businessDayStartTime={branding.business_day_start_time} />
