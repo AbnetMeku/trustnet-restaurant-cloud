@@ -2773,13 +2773,11 @@ def inventory_daily_history():
                     opening = float(snapshot.opening_quantity or 0)
                     purchased = float(snapshot.purchased_quantity or 0)
                     transferred_out = float(snapshot.transferred_out_quantity or 0)
-                    closing = float(snapshot.closing_quantity or 0)
                 elif previous_store_snapshots.get(item.id):
                     opening = float(previous_store_snapshots[item.id].closing_quantity or 0)
-                    closing = current_quantity
                 else:
                     opening = current_quantity - purchased + transferred_out
-                    closing = current_quantity
+                closing = current_quantity
             elif snapshot:
                 opening = float(snapshot.opening_quantity or 0)
                 closing = float(snapshot.closing_quantity or 0)
@@ -2820,28 +2818,18 @@ def inventory_daily_history():
                 snapshot = station_snapshots.get((station.id, item.id))
                 opening_adjusted = bool(snapshot and getattr(snapshot, "opening_adjusted", False))
                 if target_date == _business_day_date(None, tenant_id):
-                    if snapshot and getattr(snapshot, "opening_adjusted", False):
-                        opening = float(snapshot.start_of_day_quantity or 0)
-                        closing = float(snapshot.remaining_quantity or 0)
-                        sold = float(snapshot.sold_quantity or 0)
-                        void_qty = float(snapshot.void_quantity or 0)
-                        transfer_in = float(snapshot.added_quantity or 0)
-                    elif snapshot:
+                    sold = float(snapshot.sold_quantity or 0) if snapshot else 0.0
+                    void_qty = float(snapshot.void_quantity or 0) if snapshot else 0.0
+                    if snapshot:
                         opening = float(snapshot.start_of_day_quantity or 0)
                         transfer_in = float(snapshot.added_quantity or 0)
-                        sold = float(snapshot.sold_quantity or 0)
-                        void_qty = float(snapshot.void_quantity or 0)
-                        closing = current_quantity
                     elif previous_station_snapshots.get((station.id, item.id)):
                         opening = float(previous_station_snapshots[(station.id, item.id)].remaining_quantity or 0)
                         sold = 0.0
                         void_qty = 0.0
-                        closing = current_quantity
                     else:
-                        opening = current_quantity - transfer_in
-                        sold = 0.0
-                        void_qty = 0.0
-                        closing = current_quantity
+                        opening = current_quantity - transfer_in + sold - void_qty
+                    closing = current_quantity
                 elif snapshot:
                     opening = float(snapshot.start_of_day_quantity or 0)
                     transfer_in = float(snapshot.added_quantity or 0)

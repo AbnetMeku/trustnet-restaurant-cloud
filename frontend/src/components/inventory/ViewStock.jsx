@@ -64,7 +64,7 @@ function HistoryTable({ rows, type }) {
             {!isStore && <th className="px-4 py-3 font-medium text-right">Transferred In</th>}
             {!isStore && <th className="px-4 py-3 font-medium text-right">Sold</th>}
             {!isStore && <th className="px-4 py-3 font-medium text-right">Void</th>}
-            <th className="px-4 py-3 font-medium text-right">Closing</th>
+            <th className="px-4 py-3 font-medium text-right">Current / Closing</th>
           </tr>
         </thead>
         <tbody>
