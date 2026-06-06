@@ -38,8 +38,13 @@ function formatShotDisplay(value, shotsPerBottle) {
   return parts.join(" ");
 }
 
+function usesShotDisplay(shotsPerBottle) {
+  const perBottle = Number(shotsPerBottle || 0);
+  return Number.isFinite(perBottle) && perBottle > 0;
+}
+
 function Qty({ value, strong = false, shotsPerBottle = 0 }) {
-  const display = formatShotDisplay(value, shotsPerBottle);
+  const display = formatShotDisplay(value, usesShotDisplay(shotsPerBottle) ? shotsPerBottle : 0);
   return <span className={strong ? "font-semibold text-foreground" : "text-foreground"}>{display}</span>;
 }
 
@@ -340,7 +345,11 @@ export default function StockManagement() {
                         <tr key={row.inventory_item_id} className="inventory-table-row">
                           <td className="px-4 py-3 font-medium">{row.inventory_item_name}</td>
                           <td className="px-4 py-3 text-right">
-                            <span className="text-foreground">{numberFormat.format(Number(row.shots_per_bottle || 0))}</span>
+                            <span className="text-muted-foreground">
+                              {usesShotDisplay(row.shots_per_bottle)
+                                ? numberFormat.format(Number(row.shots_per_bottle))
+                                : "—"}
+                            </span>
                           </td>
                           <td className="px-4 py-3 text-right">
                             <Qty value={row.store_quantity} shotsPerBottle={row.shots_per_bottle} strong />

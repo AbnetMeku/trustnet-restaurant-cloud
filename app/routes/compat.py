@@ -259,6 +259,7 @@ def _sync_payload_inventory_item(row: InventoryItem):
         "servings_per_unit": row.servings_per_unit,
         "container_size_ml": row.container_size_ml,
         "default_shot_ml": row.default_shot_ml,
+        "shots_per_bottle": float(getattr(row, "shots_per_bottle", 0) or 0),
         "is_active": row.is_active,
     }
 
@@ -1663,6 +1664,9 @@ def _inventory_non_negative_float(value, field_name: str) -> float:
 
 
 def _shots_per_bottle(item) -> float:
+    """Match local POS: use stored shots_per_bottle when the field exists (0 = plain qty display)."""
+    if hasattr(item, "shots_per_bottle"):
+        return float(getattr(item, "shots_per_bottle", 0) or 0)
     container = float(getattr(item, "container_size_ml", 0) or 0)
     shot = float(getattr(item, "default_shot_ml", 0) or 0)
     if container <= 0 or shot <= 0:
@@ -1859,6 +1863,7 @@ def inventory_items_create():
         servings_per_unit=servings_per_unit,
         container_size_ml=container_size_ml,
         default_shot_ml=default_shot_ml,
+        shots_per_bottle=shots_per_bottle,
         is_active=bool(payload.get("is_active", True)),
     )
     db.session.add(row)
@@ -1956,7 +1961,13 @@ def inventory_item_update(item_id: int):
         return jsonify({"msg": "default_shot_ml cannot be greater than container_size_ml"}), 400
     row.container_size_ml = container_size_ml
     row.default_shot_ml = default_shot_ml
-    shots_per_bottle = _shots_per_bottle(row)
+    if (row.unit or "").strip().lower() == "bottle":
+        shots_per_bottle = _shots_per_bottle(
+            type("Tmp", (), {"container_size_ml": container_size_ml, "default_shot_ml": default_shot_ml})()
+        )
+    else:
+        shots_per_bottle = 0.0
+    row.shots_per_bottle = shots_per_bottle
     row.serving_unit = "shot" if (row.unit or "").strip().lower() == "bottle" else "ml"
     row.servings_per_unit = shots_per_bottle if row.serving_unit == "shot" else (container_size_ml / default_shot_ml)
     if "is_active" in payload:
