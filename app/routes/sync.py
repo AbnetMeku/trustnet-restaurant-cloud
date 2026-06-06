@@ -498,6 +498,8 @@ def _upsert_stock_purchase(tenant_id: int, payload: dict):
     row.inventory_item_id = inventory_id
     row.quantity = payload.get("quantity", row.quantity or 0.0)
     row.unit_price = payload.get("unit_price", row.unit_price)
+    if "note" in payload:
+        row.note = payload.get("note")
     row.status = payload.get("status") or row.status
     created_at = _parse_datetime(payload.get("created_at"))
     if created_at:
@@ -526,6 +528,8 @@ def _upsert_stock_transfer(tenant_id: int, payload: dict):
     row.inventory_item_id = inventory_id
     row.station_id = station_id
     row.quantity = payload.get("quantity", row.quantity or 0.0)
+    if "note" in payload:
+        row.note = payload.get("note")
     row.status = payload.get("status") or row.status
     created_at = _parse_datetime(payload.get("created_at"))
     if created_at:

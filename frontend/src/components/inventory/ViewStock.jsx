@@ -23,9 +23,11 @@ function formatShotDisplay(value, shotsPerBottle) {
   if (!Number.isFinite(perBottle) || perBottle <= 0) {
     return numberFormat.format(total);
   }
-  const safeTotal = Math.max(0, total);
-  let bottles = Math.floor(safeTotal / perBottle);
-  let shots = Math.round(safeTotal - bottles * perBottle);
+  if (total < 0) {
+    return numberFormat.format(total);
+  }
+  let bottles = Math.floor(total / perBottle);
+  let shots = Math.round(total - bottles * perBottle);
   if (shots >= perBottle) {
     bottles += 1;
     shots = 0;

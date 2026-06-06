@@ -360,6 +360,7 @@ class StockPurchase(db.Model):
     inventory_item_id = db.Column(db.Integer, db.ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
     quantity = db.Column(db.Float, nullable=False)
     unit_price = db.Column(db.Float, nullable=True)
+    note = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(20), nullable=False, default="Purchased")
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
 
@@ -372,6 +373,7 @@ class StockTransfer(db.Model):
     inventory_item_id = db.Column(db.Integer, db.ForeignKey("inventory_items.id", ondelete="CASCADE"), nullable=False)
     station_id = db.Column(db.Integer, db.ForeignKey("stations.id", ondelete="CASCADE"), nullable=False)
     quantity = db.Column(db.Float, nullable=False)
+    note = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(20), nullable=False, default="Transferred")
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
 

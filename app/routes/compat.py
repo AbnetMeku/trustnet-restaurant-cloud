@@ -307,6 +307,7 @@ def _sync_payload_stock_purchase(row: StockPurchase):
         "inventory_item_name": inventory_item.name if inventory_item else None,
         "quantity": row.quantity,
         "unit_price": row.unit_price,
+        "note": row.note,
         "status": row.status,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
@@ -322,6 +323,7 @@ def _sync_payload_stock_transfer(row: StockTransfer):
         "inventory_item_name": inventory_item.name if inventory_item else None,
         "station_name": station.name if station else None,
         "quantity": row.quantity,
+        "note": row.note,
         "status": row.status,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
