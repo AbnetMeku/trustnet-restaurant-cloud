@@ -231,7 +231,7 @@ def _upsert_user(tenant_id: int, payload: dict):
     row.username = username
     row.role = (payload.get("role") or "waiter").strip()
     row.tenant_id = tenant_id
-    row.is_active = True
+    row.is_active = bool(payload.get("is_active", True))
     if not row.password_hash:
         row.password_hash = generate_password_hash("change-me")
     with db.session.no_autoflush:
