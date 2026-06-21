@@ -292,6 +292,7 @@ class InventoryItem(db.Model):
     container_size_ml = db.Column(db.Float, nullable=False, default=1.0)
     default_shot_ml = db.Column(db.Float, nullable=False, default=1.0)
     shots_per_bottle = db.Column(db.Float, nullable=False, default=0.0)
+    stock_unit = db.Column(db.String(20), nullable=False, default="bottle")
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
 

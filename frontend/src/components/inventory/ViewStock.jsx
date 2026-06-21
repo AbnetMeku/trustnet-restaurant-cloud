@@ -38,13 +38,17 @@ function formatShotDisplay(value, shotsPerBottle) {
   return parts.join(" ");
 }
 
-function usesShotDisplay(shotsPerBottle) {
+function formatQuantityDisplay(value, { shotsPerBottle = 0, stockUnit = "bottle" } = {}) {
   const perBottle = Number(shotsPerBottle || 0);
-  return Number.isFinite(perBottle) && perBottle > 0;
+  if (perBottle > 0) {
+    return formatShotDisplay(value, perBottle);
+  }
+  const formatted = numberFormat.format(Number(value || 0));
+  return `${formatted} ${stockUnit || "unit"}`;
 }
 
-function Qty({ value, strong = false, shotsPerBottle = 0 }) {
-  const display = formatShotDisplay(value, usesShotDisplay(shotsPerBottle) ? shotsPerBottle : 0);
+function Qty({ value, strong = false, shotsPerBottle = 0, stockUnit = "bottle" }) {
+  const display = formatQuantityDisplay(value, { shotsPerBottle, stockUnit });
   return <span className={strong ? "font-semibold text-foreground" : "text-foreground"}>{display}</span>;
 }
 
@@ -85,13 +89,13 @@ function HistoryTable({ rows, type }) {
                     <td className="px-4 py-3">{row.inventory_item_name}</td>
                   </>
                 )}
-                <td className="px-4 py-3 text-right"><Qty value={row.opening_quantity} shotsPerBottle={row.shots_per_bottle} /></td>
-                {isStore && <td className="px-4 py-3 text-right"><Qty value={row.purchased_quantity} shotsPerBottle={row.shots_per_bottle} /></td>}
-                {isStore && <td className="px-4 py-3 text-right"><Qty value={row.transferred_out_quantity} shotsPerBottle={row.shots_per_bottle} /></td>}
-                {!isStore && <td className="px-4 py-3 text-right"><Qty value={row.transferred_in_quantity} shotsPerBottle={row.shots_per_bottle} /></td>}
-                {!isStore && <td className="px-4 py-3 text-right"><Qty value={row.sold_quantity} shotsPerBottle={row.shots_per_bottle} /></td>}
-                {!isStore && <td className="px-4 py-3 text-right"><Qty value={row.void_quantity} shotsPerBottle={row.shots_per_bottle} /></td>}
-                <td className="px-4 py-3 text-right"><Qty value={row.closing_quantity} shotsPerBottle={row.shots_per_bottle} strong /></td>
+                <td className="px-4 py-3 text-right"><Qty value={row.opening_quantity} shotsPerBottle={row.shots_per_bottle} stockUnit={row.stock_unit} /></td>
+                {isStore && <td className="px-4 py-3 text-right"><Qty value={row.purchased_quantity} shotsPerBottle={row.shots_per_bottle} stockUnit={row.stock_unit} /></td>}
+                {isStore && <td className="px-4 py-3 text-right"><Qty value={row.transferred_out_quantity} shotsPerBottle={row.shots_per_bottle} stockUnit={row.stock_unit} /></td>}
+                {!isStore && <td className="px-4 py-3 text-right"><Qty value={row.transferred_in_quantity} shotsPerBottle={row.shots_per_bottle} stockUnit={row.stock_unit} /></td>}
+                {!isStore && <td className="px-4 py-3 text-right"><Qty value={row.sold_quantity} shotsPerBottle={row.shots_per_bottle} stockUnit={row.stock_unit} /></td>}
+                {!isStore && <td className="px-4 py-3 text-right"><Qty value={row.void_quantity} shotsPerBottle={row.shots_per_bottle} stockUnit={row.stock_unit} /></td>}
+                <td className="px-4 py-3 text-right"><Qty value={row.closing_quantity} shotsPerBottle={row.shots_per_bottle} stockUnit={row.stock_unit} strong /></td>
               </tr>
             ))
           )}
@@ -346,21 +350,21 @@ export default function StockManagement() {
                           <td className="px-4 py-3 font-medium">{row.inventory_item_name}</td>
                           <td className="px-4 py-3 text-right">
                             <span className="text-muted-foreground">
-                              {usesShotDisplay(row.shots_per_bottle)
+                              {Number(row.shots_per_bottle || 0) > 0
                                 ? numberFormat.format(Number(row.shots_per_bottle))
-                                : "—"}
+                                : row.stock_unit || "—"}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            <Qty value={row.store_quantity} shotsPerBottle={row.shots_per_bottle} strong />
+                            <Qty value={row.store_quantity} shotsPerBottle={row.shots_per_bottle} stockUnit={row.stock_unit} strong />
                           </td>
                           {row.stations.map((station) => (
                             <td key={station.station_id} className="px-4 py-3 text-right">
-                              <Qty value={station.quantity} shotsPerBottle={row.shots_per_bottle} />
+                              <Qty value={station.quantity} shotsPerBottle={row.shots_per_bottle} stockUnit={row.stock_unit} />
                             </td>
                           ))}
                           <td className="px-4 py-3 text-right">
-                            <Qty value={row.total_quantity} shotsPerBottle={row.shots_per_bottle} strong />
+                            <Qty value={row.total_quantity} shotsPerBottle={row.shots_per_bottle} stockUnit={row.stock_unit} strong />
                           </td>
                         </tr>
                       ))

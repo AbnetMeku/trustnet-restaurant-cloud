@@ -13,6 +13,7 @@ import { getInventoryItems } from "@/api/inventory/items";
 import { getAllStoreStock } from "@/api/inventory/stock";
 import { formatEatDateTime } from "@/lib/timezone";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { formatQuantityForItem, inventoryOptionLabel } from "@/lib/inventoryUnits";
 import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 
 const PAGE_SIZE = 10;
@@ -114,12 +115,13 @@ export default function PurchaseManagement() {
       items
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name))
-        .map((item) => ({
-          value: item.id,
-          label: `${item.name} • ${Number(item.container_size_ml || 0)}ml • ${Number(
-            stocks.find((row) => row.inventory_item_id === item.id)?.quantity || 0
-          )} in store`,
-        })),
+        .map((item) => {
+          const stockQty = Number(stocks.find((row) => row.inventory_item_id === item.id)?.quantity || 0);
+          return {
+            value: item.id,
+            label: inventoryOptionLabel(item, stockQty),
+          };
+        }),
     [items, stocks]
   );
 
@@ -131,7 +133,8 @@ export default function PurchaseManagement() {
     return purchases.filter((purchase) => {
       return (
         String(purchase.inventory_item_name || "").toLowerCase().includes(query) ||
-        String(purchase.status || "").toLowerCase().includes(query)
+        String(purchase.status || "").toLowerCase().includes(query) ||
+        String(purchase.note || "").toLowerCase().includes(query)
       );
     });
   }, [purchases, historySearch]);
@@ -272,11 +275,15 @@ export default function PurchaseManagement() {
                 <div className="grid gap-3 md:grid-cols-3">
                   <div className="inventory-panel-soft rounded-xl p-3">
                     <p className="text-xs text-muted-foreground">Current Store Stock</p>
-                    <p className="mt-1 text-xl font-semibold">{currentStockQty.toFixed(3)}</p>
+                    <p className="mt-1 text-xl font-semibold">
+                      {formatQuantityForItem(currentStockQty, selectedItem)}
+                    </p>
                   </div>
                   <div className="inventory-panel-soft rounded-xl p-3">
                     <p className="text-xs text-muted-foreground">After Receipt</p>
-                    <p className="mt-1 text-xl font-semibold">{stockAfterEntry.toFixed(3)}</p>
+                    <p className="mt-1 text-xl font-semibold">
+                      {formatQuantityForItem(stockAfterEntry, selectedItem)}
+                    </p>
                   </div>
                   <div className="inventory-panel-soft rounded-xl p-3">
                     <p className="text-xs text-muted-foreground">Estimated Total Cost</p>
@@ -308,7 +315,15 @@ export default function PurchaseManagement() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="font-medium">{purchase.inventory_item_name}</p>
-                          <p className="text-sm text-muted-foreground">{purchase.quantity} units</p>
+                          <p className="text-sm text-muted-foreground">
+                            {formatQuantityForItem(
+                              purchase.quantity,
+                              items.find((item) => item.id === purchase.inventory_item_id)
+                            )}
+                          </p>
+                          {purchase.note ? (
+                            <p className="text-xs text-muted-foreground">{purchase.note}</p>
+                          ) : null}
                           <p className="text-xs text-muted-foreground">{formatEatDateTime(purchase.created_at)}</p>
                         </div>
                         <StatusBadge status={purchase.status} />
@@ -350,6 +365,7 @@ export default function PurchaseManagement() {
                     <th className="px-4 py-3 font-medium">Item</th>
                     <th className="px-4 py-3 font-medium">Quantity</th>
                     <th className="px-4 py-3 font-medium">Unit Price</th>
+                    <th className="px-4 py-3 font-medium">Note</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium">Date</th>
                     {user?.role === "admin" && <th className="px-4 py-3 font-medium text-right">Actions</th>}
@@ -358,7 +374,7 @@ export default function PurchaseManagement() {
                 <tbody>
                   {paginatedPurchases.length === 0 ? (
                     <tr>
-                      <td colSpan={user?.role === "admin" ? 7 : 6} className="px-4 py-10 text-center text-muted-foreground">
+                      <td colSpan={user?.role === "admin" ? 8 : 7} className="px-4 py-10 text-center text-muted-foreground">
                         No purchase history matches your search.
                       </td>
                     </tr>
@@ -367,8 +383,14 @@ export default function PurchaseManagement() {
                       <tr key={purchase.id} className="inventory-table-row">
                         <td className="px-4 py-3">{(purchasePage - 1) * PAGE_SIZE + index + 1}</td>
                         <td className="px-4 py-3 font-medium">{purchase.inventory_item_name}</td>
-                        <td className="px-4 py-3">{purchase.quantity}</td>
+                        <td className="px-4 py-3">
+                          {formatQuantityForItem(
+                            purchase.quantity,
+                            items.find((item) => item.id === purchase.inventory_item_id)
+                          )}
+                        </td>
                         <td className="px-4 py-3">{purchase.unit_price ?? "-"}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{purchase.note || "—"}</td>
                         <td className="px-4 py-3">
                           <StatusBadge status={purchase.status} />
                         </td>

@@ -426,6 +426,7 @@ def _upsert_inventory_item(tenant_id: int, payload: dict):
     row.container_size_ml = payload.get("container_size_ml", row.container_size_ml)
     row.default_shot_ml = payload.get("default_shot_ml", row.default_shot_ml)
     row.shots_per_bottle = payload.get("shots_per_bottle", row.shots_per_bottle if hasattr(row, 'shots_per_bottle') else 0.0)
+    row.stock_unit = payload.get("stock_unit") or getattr(row, "stock_unit", None) or "bottle"
     row.is_active = bool(payload.get("is_active", True))
     _apply_timestamps(row, payload)
     if created:

@@ -260,6 +260,7 @@ def _sync_payload_inventory_item(row: InventoryItem):
         "container_size_ml": row.container_size_ml,
         "default_shot_ml": row.default_shot_ml,
         "shots_per_bottle": float(getattr(row, "shots_per_bottle", 0) or 0),
+        "stock_unit": getattr(row, "stock_unit", None) or "bottle",
         "is_active": row.is_active,
     }
 
@@ -1663,6 +1664,12 @@ def _inventory_non_negative_float(value, field_name: str) -> float:
     return parsed
 
 
+def _stock_unit(item) -> str:
+    if hasattr(item, "stock_unit") and item.stock_unit:
+        return str(item.stock_unit)
+    return "bottle"
+
+
 def _shots_per_bottle(item) -> float:
     """Match local POS: use stored shots_per_bottle when the field exists (0 = plain qty display)."""
     if hasattr(item, "shots_per_bottle"):
@@ -1818,6 +1825,8 @@ def inventory_items_list():
                 "id": row.id,
                 "name": row.name,
                 "unit": row.unit,
+                "stock_unit": _stock_unit(row),
+                "shots_per_bottle": _shots_per_bottle(row),
                 "container_size_ml": row.container_size_ml,
                 "default_shot_ml": row.default_shot_ml,
                 "is_active": row.is_active,
@@ -1895,6 +1904,8 @@ def inventory_item_get(item_id: int):
             "id": row.id,
             "name": row.name,
             "unit": row.unit,
+            "stock_unit": _stock_unit(row),
+            "shots_per_bottle": _shots_per_bottle(row),
             "container_size_ml": row.container_size_ml,
             "default_shot_ml": row.default_shot_ml,
             "is_active": row.is_active,
@@ -1910,6 +1921,70 @@ def inventory_item_get(item_id: int):
                 }
                 for link in links
             ],
+        }
+    )
+
+
+def _serialize_menu_recipe_line(link: InventoryMenuLink):
+    inventory_item = link.inventory_item
+    return {
+        "id": link.id,
+        "inventory_item_id": link.inventory_item_id,
+        "inventory_item_name": inventory_item.name if inventory_item else None,
+        "stock_unit": _stock_unit(inventory_item) if inventory_item else None,
+        "serving_type": link.serving_type,
+        "serving_value": link.serving_value,
+        "deduction_ratio": link.deduction_ratio,
+    }
+
+
+@compat_bp.get("/inventory/menu-recipes/")
+@jwt_required()
+def inventory_menu_recipes_list():
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    menu_items = (
+        MenuItem.query.filter_by(tenant_id=tenant_id).order_by(MenuItem.name.asc()).all()
+    )
+    link_counts = dict(
+        db.session.query(InventoryMenuLink.menu_item_id, db.func.count(InventoryMenuLink.id))
+        .filter(InventoryMenuLink.tenant_id == tenant_id)
+        .group_by(InventoryMenuLink.menu_item_id)
+        .all()
+    )
+    return jsonify(
+        [
+            {
+                "menu_item_id": item.id,
+                "menu_item_name": item.name,
+                "ingredient_count": int(link_counts.get(item.id, 0)),
+            }
+            for item in menu_items
+        ]
+    )
+
+
+@compat_bp.get("/inventory/menu-recipes/<int:menu_item_id>")
+@jwt_required()
+def inventory_menu_recipe_get(menu_item_id: int):
+    tenant_id, error = _tenant_id_required()
+    if error:
+        return error
+    menu_item = MenuItem.query.filter_by(id=menu_item_id, tenant_id=tenant_id).first()
+    if menu_item is None:
+        return jsonify({"msg": "Menu item not found"}), 404
+    links = (
+        InventoryMenuLink.query.filter_by(tenant_id=tenant_id, menu_item_id=menu_item_id)
+        .order_by(InventoryMenuLink.id.asc())
+        .all()
+    )
+    return jsonify(
+        {
+            "menu_item_id": menu_item.id,
+            "menu_item_name": menu_item.name,
+            "ingredient_count": len(links),
+            "lines": [_serialize_menu_recipe_line(link) for link in links],
         }
     )
 
@@ -2186,6 +2261,7 @@ def list_purchases():
                 "inventory_item_name": row.inventory_item.name if row.inventory_item else None,
                 "quantity": row.quantity,
                 "unit_price": row.unit_price,
+                "note": row.note,
                 "status": row.status,
                 "created_at": row.created_at.isoformat(),
             }
@@ -2248,6 +2324,7 @@ def get_purchase(item_id: int):
             "inventory_item_name": row.inventory_item.name if row.inventory_item else None,
             "quantity": row.quantity,
             "unit_price": row.unit_price,
+            "note": row.note,
             "status": row.status,
             "created_at": row.created_at.isoformat(),
         }
@@ -2342,6 +2419,7 @@ def list_transfers():
                 "station_id": row.station_id,
                 "station_name": row.station.name if row.station else None,
                 "quantity": row.quantity,
+                "note": row.note,
                 "status": row.status,
                 "created_at": row.created_at.isoformat(),
             }
@@ -2425,6 +2503,7 @@ def get_transfer(item_id: int):
             "station_id": row.station_id,
             "station_name": row.station.name if row.station else None,
             "quantity": row.quantity,
+            "note": row.note,
             "status": row.status,
             "created_at": row.created_at.isoformat(),
         }
@@ -2643,6 +2722,7 @@ def inventory_stock_overview():
             )
         store_quantity = store_map.get(item.id, 0.0)
         shots_per_bottle = _shots_per_bottle(item)
+        stock_unit = _stock_unit(item)
         payload_rows.append(
             {
                 "inventory_item_id": item.id,
@@ -2650,6 +2730,7 @@ def inventory_stock_overview():
                 "container_size_ml": _inventory_decimal(item.container_size_ml),
                 "default_shot_ml": _inventory_decimal(item.default_shot_ml),
                 "shots_per_bottle": shots_per_bottle,
+                "stock_unit": stock_unit,
                 "store_quantity": store_quantity,
                 "total_station_quantity": total_station_quantity,
                 "total_quantity": store_quantity + total_station_quantity,
@@ -2799,6 +2880,7 @@ def inventory_daily_history():
                         "inventory_item_id": item.id,
                         "inventory_item_name": item.name,
                         "shots_per_bottle": _shots_per_bottle(item),
+                        "stock_unit": _stock_unit(item),
                         "opening_adjusted": opening_adjusted,
                         "opening_quantity": opening,
                         "purchased_quantity": purchased,
@@ -2856,6 +2938,7 @@ def inventory_daily_history():
                             "inventory_item_id": item.id,
                             "inventory_item_name": item.name,
                             "shots_per_bottle": _shots_per_bottle(item),
+                            "stock_unit": _stock_unit(item),
                             "opening_adjusted": opening_adjusted,
                             "opening_quantity": opening,
                             "purchased_quantity": 0.0,

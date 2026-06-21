@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
 import { formatEatDateTime } from "@/lib/timezone";
 import { getApiErrorMessage } from "@/lib/apiError";
+import { formatQuantityForItem, inventoryOptionLabel } from "@/lib/inventoryUnits";
 import { useCloudReadOnly } from "@/hooks/useCloudReadOnly";
 import { getTransfers, createTransfer, updateTransfer, deleteTransfer } from "@/api/inventory/transfer";
 import { getStations } from "@/api/stations";
@@ -150,12 +151,13 @@ export default function TransferManagement() {
           return stock > 0 || item.id === Number(form.inventory_item_id);
         })
         .sort((a, b) => a.name.localeCompare(b.name))
-        .map((item) => ({
-          value: item.id,
-          label: `${item.name} • ${Number(item.container_size_ml || 0)}ml • ${Number(
-            stocks.find((row) => row.inventory_item_id === item.id)?.quantity || 0
-          )} in store`,
-        })),
+        .map((item) => {
+          const stockQty = Number(stocks.find((row) => row.inventory_item_id === item.id)?.quantity || 0);
+          return {
+            value: item.id,
+            label: inventoryOptionLabel(item, stockQty),
+          };
+        }),
     [items, stocks, form.inventory_item_id]
   );
 
@@ -177,7 +179,8 @@ export default function TransferManagement() {
       return (
         String(transfer.inventory_item_name || "").toLowerCase().includes(query) ||
         String(transfer.station_name || "").toLowerCase().includes(query) ||
-        String(transfer.status || "").toLowerCase().includes(query)
+        String(transfer.status || "").toLowerCase().includes(query) ||
+        String(transfer.note || "").toLowerCase().includes(query)
       );
     });
   }, [transfers, historySearch]);
@@ -332,13 +335,15 @@ export default function TransferManagement() {
                   <div className="inventory-panel-soft rounded-xl p-3">
                     <p className="text-xs text-muted-foreground">Store Before / After</p>
                     <p className="mt-1 text-xl font-semibold">
-                      {availableForTransfer.toFixed(3)} / {storeAfterTransfer.toFixed(3)}
+                      {formatQuantityForItem(availableForTransfer, selectedItem)} /{" "}
+                      {formatQuantityForItem(storeAfterTransfer, selectedItem)}
                     </p>
                   </div>
                   <div className="inventory-panel-soft rounded-xl p-3">
                     <p className="text-xs text-muted-foreground">Station Before / After</p>
                     <p className="mt-1 text-xl font-semibold">
-                      {currentStationStock.toFixed(3)} / {stationAfterTransfer.toFixed(3)}
+                      {formatQuantityForItem(currentStationStock, selectedItem)} /{" "}
+                      {formatQuantityForItem(stationAfterTransfer, selectedItem)}
                     </p>
                   </div>
                 </div>
@@ -368,7 +373,13 @@ export default function TransferManagement() {
                         <div>
                           <p className="font-medium">{transfer.inventory_item_name}</p>
                           <p className="text-sm text-muted-foreground">To {transfer.station_name}</p>
-                          <p className="text-xs text-muted-foreground">{transfer.quantity} units • {formatEatDateTime(transfer.created_at)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatQuantityForItem(
+                              transfer.quantity,
+                              items.find((item) => item.id === transfer.inventory_item_id)
+                            )}{" "}
+                            • {formatEatDateTime(transfer.created_at)}
+                          </p>
                         </div>
                         <StatusBadge status={transfer.status} />
                       </div>
@@ -409,6 +420,7 @@ export default function TransferManagement() {
                     <th className="px-4 py-3 font-medium">Item</th>
                     <th className="px-4 py-3 font-medium">Station</th>
                     <th className="px-4 py-3 font-medium">Quantity</th>
+                    <th className="px-4 py-3 font-medium">Note</th>
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium">Date</th>
                     {user?.role === "admin" && <th className="px-4 py-3 font-medium text-right">Actions</th>}
@@ -417,7 +429,7 @@ export default function TransferManagement() {
                 <tbody>
                   {paginatedTransfers.length === 0 ? (
                     <tr>
-                      <td colSpan={user?.role === "admin" ? 7 : 6} className="px-4 py-10 text-center text-muted-foreground">
+                      <td colSpan={user?.role === "admin" ? 8 : 7} className="px-4 py-10 text-center text-muted-foreground">
                         No transfer history matches your search.
                       </td>
                     </tr>
@@ -427,7 +439,13 @@ export default function TransferManagement() {
                         <td className="px-4 py-3">{(transferPage - 1) * PAGE_SIZE + index + 1}</td>
                         <td className="px-4 py-3 font-medium">{transfer.inventory_item_name}</td>
                         <td className="px-4 py-3">{transfer.station_name}</td>
-                        <td className="px-4 py-3">{transfer.quantity}</td>
+                        <td className="px-4 py-3">
+                          {formatQuantityForItem(
+                            transfer.quantity,
+                            items.find((item) => item.id === transfer.inventory_item_id)
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{transfer.note || "—"}</td>
                         <td className="px-4 py-3">
                           <StatusBadge status={transfer.status} />
                         </td>

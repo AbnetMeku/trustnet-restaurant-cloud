@@ -192,3 +192,47 @@ export const deleteInventoryLink = async (linkId, token = null) => {
     handleError(error, "Failed to delete inventory link");
   }
 };
+
+// ============================================================
+// MENU RECIPES (multi-ingredient food recipes)
+// ============================================================
+
+export const getMenuRecipes = async (token = null) => {
+  try {
+    const res = await axios.get(`${BASE_URL}/inventory/menu-recipes/`, {
+      headers: getAuthHeader(token),
+    });
+    return res.data;
+  } catch (error) {
+    handleError(error, "Failed to fetch menu recipes");
+  }
+};
+
+export const getMenuRecipe = async (menuItemId, token = null) => {
+  try {
+    const res = await axios.get(`${BASE_URL}/inventory/menu-recipes/${menuItemId}`, {
+      headers: getAuthHeader(token),
+    });
+    return res.data;
+  } catch (error) {
+    handleError(error, "Failed to fetch menu recipe");
+  }
+};
+
+export const replaceMenuRecipe = async (menuItemId, lines, token = null) => {
+  try {
+    const res = await axios.put(
+      `${BASE_URL}/inventory/menu-recipes/${menuItemId}`,
+      { lines },
+      {
+        headers: {
+          ...getAuthHeader(token),
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    return res.data;
+  } catch (error) {
+    handleError(error, "Failed to save menu recipe");
+  }
+};
